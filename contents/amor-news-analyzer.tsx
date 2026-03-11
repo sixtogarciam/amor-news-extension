@@ -1,0 +1,141 @@
+import * as React from "react"
+import * as ReactDOM from "react-dom"
+import { Storage } from "@plasmohq/storage"
+
+export const config = {
+  matches: ["<all_urls>"],
+  run_at: "document_idle"
+}
+
+const storageCS = new Storage()
+
+const GSI = "#00a9e0"
+const CLICKBAIT_COLOR = "#f1c40f"
+const SENSATIONAL_COLOR = "#e67e22"
+
+function analyzeArticle(text: string) {
+  const emotional = Math.min(1, (text.match(/!/g) || []).length * 0.1)
+  const exaggeration = /shocking|unbelievable|incredible/i.test(text)
+    ? 0.9
+    : 0.3
+  const moralLanguage = /justice|rights|duty|moral|ethics/i.test(text)
+    ? 0.8
+    : 0.4
+
+  return { emotional, exaggeration, moralLanguage }
+}
+
+function Overlay() {
+  const [newsAnalysis, setNewsAnalysis] = React.useState<any[]>([])
+
+  React.useEffect(() => {
+    const analyzePage = async () => {
+      const threshold = (await storageCS.get<number>("threshold")) ?? 0.6
+      const analytics =
+        (await storageCS.get<any>("analytics")) || {
+          articlesAnalyzed: 0,
+          clickbaitDetected: 0,
+          sensationalDetected: 0
+        }
+
+      const newsItems = document.querySelectorAll("article, .news-item")
+      const results: any[] = []
+
+      newsItems.forEach((item) => {
+        const text = item.textContent || ""
+        const result = analyzeArticle(text)
+
+        const moralColor =
+          result.moralLanguage > 0.7
+            ? "lightgreen"
+            : result.moralLanguage > 0.4
+              ? "lightyellow"
+              : "lightcoral"
+
+        let borderColor = moralColor
+
+        if (result.emotional > threshold) {
+          borderColor = CLICKBAIT_COLOR
+          analytics.clickbaitDetected += 1
+        } else if (result.exaggeration > threshold) {
+          borderColor = SENSATIONAL_COLOR
+          analytics.sensationalDetected += 1
+        }
+
+        const htmlItem = item as HTMLElement
+        htmlItem.style.border = `3px solid ${borderColor}`
+        htmlItem.style.borderRadius = "8px"
+        htmlItem.style.padding = "4px"
+        htmlItem.title = `Moral: ${result.moralLanguage.toFixed(
+          2
+        )}, Emotional: ${result.emotional.toFixed(
+          2
+        )}, Exaggeration: ${result.exaggeration.toFixed(2)}`
+
+        results.push({ element: htmlItem, ...result })
+        analytics.articlesAnalyzed += 1
+      })
+
+      await storageCS.set("analytics", analytics)
+      setNewsAnalysis(results)
+    }
+
+    analyzePage()
+  }, [])
+
+  if (newsAnalysis.length === 0) return null
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 20,
+        right: 20,
+        width: 320,
+        background: "white",
+        borderRadius: 16,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+        padding: 16,
+        zIndex: 999999,
+        maxHeight: "50%",
+        overflowY: "auto",
+        fontFamily: "Arial"
+      }}>
+      <h3>AMOR News Analyzer</h3>
+
+      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+        {newsAnalysis.map((item, idx) => (
+          <li key={idx} style={{ marginBottom: 8 }}>
+            <strong
+              style={{
+                color:
+                  item.emotional > 0.6
+                    ? CLICKBAIT_COLOR
+                    : item.exaggeration > 0.6
+                      ? SENSATIONAL_COLOR
+                      : GSI
+              }}>
+              {item.element.textContent?.slice(0, 80)}...
+            </strong>
+
+            <div style={{ fontSize: 12, color: "#555" }}>
+              Moral: {item.moralLanguage.toFixed(2)}, Emotional:{" "}
+              {item.emotional.toFixed(2)}, Exaggeration:{" "}
+              {item.exaggeration.toFixed(2)}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+const existingRoot = document.getElementById("amor-overlay-root")
+
+if (!existingRoot) {
+  const container = document.createElement("div")
+  container.id = "amor-overlay-root"
+  document.body.appendChild(container)
+
+  ReactDOM.render(<Overlay />, container)
+}
