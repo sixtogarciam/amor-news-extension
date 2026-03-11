@@ -1,6 +1,7 @@
 import * as React from "react"
 import * as ReactDOM from "react-dom"
 import { Storage } from "@plasmohq/storage"
+import { analyzeArticle } from "~lib/analysis"
 
 export const config = {
   matches: ["<all_urls>"],
@@ -12,18 +13,6 @@ const storageCS = new Storage()
 const GSI = "#00a9e0"
 const CLICKBAIT_COLOR = "#f1c40f"
 const SENSATIONAL_COLOR = "#e67e22"
-
-function analyzeArticle(text: string) {
-  const emotional = Math.min(1, (text.match(/!/g) || []).length * 0.1)
-  const exaggeration = /shocking|unbelievable|incredible/i.test(text)
-    ? 0.9
-    : 0.3
-  const moralLanguage = /justice|rights|duty|moral|ethics/i.test(text)
-    ? 0.8
-    : 0.4
-
-  return { emotional, exaggeration, moralLanguage }
-}
 
 function Overlay() {
   const [newsAnalysis, setNewsAnalysis] = React.useState<any[]>([])
@@ -37,13 +26,20 @@ function Overlay() {
           clickbaitDetected: 0,
           sensationalDetected: 0
         }
-
-      const newsItems = document.querySelectorAll("article, .news-item")
+  
+      const newsItems = document.querySelectorAll("article, .news-item, [class*='article'], [class*='story']")
       const results: any[] = []
 
       newsItems.forEach((item) => {
-        const text = item.textContent || ""
+        const text = item.textContent?.trim() || ""
+
+        if (text.length < 120) return
+
+        const links = item.querySelectorAll("a")
+        if (links.length === 0) return
+
         const result = analyzeArticle(text)
+
 
         const moralColor =
           result.moralLanguage > 0.7
