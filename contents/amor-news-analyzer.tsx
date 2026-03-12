@@ -14,117 +14,115 @@ const GSI = "#00a9e0"
 const CLICKBAIT_COLOR = "#f1c40f"
 const SENSATIONAL_COLOR = "#e67e22"
 
+function getLevel(score: number) {
+if (score >= 0.6) return "High"
+if (score >= 0.3) return "Medium"
+return "Low"
+}
+
+function getLevelColor(score: number) {
+if (score >= 0.6) return "#d9534f"
+if (score >= 0.3) return "#f0ad4e"
+return "#777"
+}
+
 function Overlay() {
   const [newsAnalysis, setNewsAnalysis] = React.useState<any[]>([])
 
   React.useEffect(() => {
     const analyzePage = async () => {
-      const threshold = (await storageCS.get<number>("threshold")) ?? 0.6
-      const analytics =
-        (await storageCS.get<any>("analytics")) || {
-          articlesAnalyzed: 0,
-          clickbaitDetected: 0,
-          sensationalDetected: 0
-        }
-  
-      const results: any[] = []
-
-// 1) Intentar detectar un artículo principal
-const mainArticle =
-  document.querySelector("main article") ||
-  document.querySelector("article") ||
-  document.querySelector("[role='main'] article") ||
-  document.querySelector("main") ||
-  document.querySelector("[role='main']")
-
-if (mainArticle) {
-  const text = mainArticle.textContent?.trim() || ""
-
-  if (text.length >= 200) {
-    const result = analyzeArticle(text)
-
-    const htmlItem = mainArticle as HTMLElement
-
-    const moralColor =
-      result.moralLanguage > 0.7
-        ? "lightgreen"
-        : result.moralLanguage > 0.4
-          ? "lightyellow"
-          : "lightcoral"
-
-    let borderColor = moralColor
-
-    if (result.emotional > threshold) {
-      borderColor = CLICKBAIT_COLOR
-      analytics.clickbaitDetected += 1
-    } else if (result.exaggeration > threshold) {
-      borderColor = SENSATIONAL_COLOR
-      analytics.sensationalDetected += 1
-    }
-
-    htmlItem.style.border = `3px solid ${borderColor}`
-    htmlItem.style.borderRadius = "8px"
-    htmlItem.style.padding = "4px"
-    htmlItem.title = `Moral: ${result.moralLanguage.toFixed(
-      2
-    )}, Emotional: ${result.emotional.toFixed(
-      2
-    )}, Exaggeration: ${result.exaggeration.toFixed(2)}`
-
-    results.push({ element: htmlItem, ...result })
-    analytics.articlesAnalyzed += 1
-  }
-} else {
-  // 2) Si no hay artículo principal claro, usar fallback anterior
-  const newsItems = document.querySelectorAll(
-    "article, .news-item, [class*='article'], [class*='story']"
-  )
-
-  newsItems.forEach((item) => {
-    const text = item.textContent?.trim() || ""
-
-    if (text.length < 120) return
-
-    const links = item.querySelectorAll("a")
-    if (links.length === 0) return
-
-    const result = analyzeArticle(text)
-
-    const moralColor =
-      result.moralLanguage > 0.7
-        ? "lightgreen"
-        : result.moralLanguage > 0.4
-          ? "lightyellow"
-          : "lightcoral"
-
-    let borderColor = moralColor
-
-    if (result.emotional > threshold) {
-      borderColor = CLICKBAIT_COLOR
-      analytics.clickbaitDetected += 1
-    } else if (result.exaggeration > threshold) {
-      borderColor = SENSATIONAL_COLOR
-      analytics.sensationalDetected += 1
-    }
-
-    const htmlItem = item as HTMLElement
-    htmlItem.style.border = `3px solid ${borderColor}`
-    htmlItem.style.borderRadius = "8px"
-    htmlItem.style.padding = "4px"
-    htmlItem.title = `Moral: ${result.moralLanguage.toFixed(
-      2
-    )}, Emotional: ${result.emotional.toFixed(
-      2
-    )}, Exaggeration: ${result.exaggeration.toFixed(2)}`
-
-    results.push({ element: htmlItem, ...result })
-    analytics.articlesAnalyzed += 1
-  })
+const threshold = (await storageCS.get<number>("threshold")) ?? 0.6
+const analytics =
+(await storageCS.get<any>("analytics")) || {
+articlesAnalyzed: 0,
+clickbaitDetected: 0,
+sensationalDetected: 0
 }
 
-      await storageCS.set("analytics", analytics)
-      setNewsAnalysis(results)
-    }
+const results: any[] = []
+
+// Buscar candidatos más razonables para cuerpo de noticia
+const candidates = Array.from(
+document.querySelectorAll(
+"article, main article, [role='main'] article, [itemprop='articleBody'], [class*='article-body'], [class*='story-body'], [class*='content']"
+)
+) as HTMLElement[]
+
+const scoredCandidates = candidates
+.map((item) => {
+const text = item.textContent?.trim() || ""
+const paragraphs = item.querySelectorAll("p").length
+const links = item.querySelectorAll("a").length
+const headings = item.querySelectorAll("h1, h2").length
+
+const rect = item.getBoundingClientRect()
+const area = rect.width * rect.height
+
+// descartar bloques claramente malos
+if (text.length < 400) return null
+if (paragraphs < 3) return null
+if (area < 50000) return null
+if (rect.width < 300 || rect.height < 200) return null
+
+// evitar menús/cabeceras/bloques con demasiados enlaces
+if (links > paragraphs * 3) return null
+
+// puntuación heurística
+const score =
+text.length +
+paragraphs * 300 +
+headings * 500 -
+links * 20
+
+return { item, text, score }
+})
+.filter(Boolean) as { item: HTMLElement; text: string; score: number }[]
+
+// elegir solo el mejor candidato
+const bestCandidate = scoredCandidates.sort((a, b) => b.score - a.score)[0]
+
+if (!bestCandidate) {
+await storageCS.set("analytics", analytics)
+setNewsAnalysis([])
+return
+}
+
+const result = analyzeArticle(bestCandidate.text)
+const htmlItem = bestCandidate.item
+
+const moralColor =
+result.moralLanguage > 0.7
+? "lightgreen"
+: result.moralLanguage > 0.4
+? "lightyellow"
+: "lightcoral"
+
+let borderColor = moralColor
+
+if (result.emotional > threshold) {
+borderColor = CLICKBAIT_COLOR
+analytics.clickbaitDetected += 1
+} else if (result.exaggeration > threshold) {
+borderColor = SENSATIONAL_COLOR
+analytics.sensationalDetected += 1
+}
+
+// outline para no deformar el layout
+htmlItem.style.outline = `3px solid ${borderColor}`
+htmlItem.style.outlineOffset = "2px"
+htmlItem.title = `Moral: ${result.moralLanguage.toFixed(
+2
+)}, Emotional: ${result.emotional.toFixed(
+2
+)}, Exaggeration: ${result.exaggeration.toFixed(2)}`
+
+results.push({ element: htmlItem, ...result })
+analytics.articlesAnalyzed += 1
+
+await storageCS.set("analytics", analytics)
+setNewsAnalysis(results)
+}
+
 
     analyzePage()
   }, [])
@@ -164,11 +162,69 @@ if (mainArticle) {
               {item.element.textContent?.slice(0, 80)}...
             </strong>
 
-            <div style={{ fontSize: 12, color: "#555" }}>
-              Moral: {item.moralLanguage.toFixed(2)}, Emotional:{" "}
-              {item.emotional.toFixed(2)}, Exaggeration:{" "}
-              {item.exaggeration.toFixed(2)}
-            </div>
+
+<div style={{ fontSize: 12, color: "#555", lineHeight: 1.5 }}>
+<div>
+<strong>Moral:</strong> {item.moralLanguage.toFixed(2)}{" "}
+<span
+style={{
+color: getLevelColor(item.moralLanguage),
+fontWeight: "bold"
+}}>
+({getLevel(item.moralLanguage)})
+</span>
+</div>
+
+<div>
+<strong>Manipulative:</strong>{" "}
+{(item.manipulativeScore ?? 0).toFixed(2)}{" "}
+<span
+style={{
+color: getLevelColor(item.manipulativeScore ?? 0),
+fontWeight: "bold"
+}}>
+({getLevel(item.manipulativeScore ?? 0)})
+</span>
+</div>
+
+<div>
+<strong>Emotional:</strong> {item.emotional.toFixed(2)}{" "}
+<span
+style={{
+color: getLevelColor(item.emotional),
+fontWeight: "bold"
+}}>
+({getLevel(item.emotional)})
+</span>
+</div>
+
+<div>
+<strong>Exaggeration:</strong> {item.exaggeration.toFixed(2)}{" "}
+<span
+style={{
+color: getLevelColor(item.exaggeration),
+fontWeight: "bold"
+}}>
+({getLevel(item.exaggeration)})
+</span>
+</div>
+</div>
+
+<div style={{ fontSize: 11, color: "#777", marginTop: 4 }}>
+<div>
+<strong>Moral keywords:</strong>{" "}
+{item.moralKeywords?.slice(0, 3).join(", ") || "None"}
+</div>
+<div>
+<strong>Manipulative keywords:</strong>{" "}
+{item.manipulativeKeywords?.slice(0, 3).join(", ") || "None"}
+</div>
+<div>
+<strong>Emotional keywords:</strong>{" "}
+{item.emotionalKeywords?.slice(0, 3).join(", ") || "None"}
+</div>
+</div>
+
           </li>
         ))}
       </ul>

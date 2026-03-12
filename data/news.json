@@ -1,34 +1,34 @@
 [
-  {
-    "id": 1,
-    "title": "Migration policy debate intensifies in Europe",
-    "date": "2025-05-10",
-    "source": "BBC",
-    "url": "https://www.bbc.com/news",
-    "summary": "European governments continue debating new migration and border control policies."
-  },
-  {
-    "id": 2,
-    "title": "New immigration law proposal divides parliament",
-    "date": "2025-05-12",
-    "source": "The Guardian",
-    "url": "https://www.theguardian.com",
-    "summary": "A proposed immigration reform has generated disagreement across political parties."
-  },
-  {
-    "id": 3,
-    "title": "Border policy measures spark political controversy",
-    "date": "2025-05-13",
-    "source": "El País",
-    "url": "https://elpais.com",
-    "summary": "Recent border policy decisions have raised concerns among NGOs and opposition groups."
-  },
-  {
-    "id": 4,
-    "title": "Human rights organizations criticize detention practices",
-    "date": "2025-05-14",
-    "source": "Reuters",
-    "url": "https://www.reuters.com",
-    "summary": "Several organizations have criticized current detention policies affecting migrants."
-  }
+{
+"id": 1,
+"title": "Why Labour is tightening UK immigration rules",
+"date": "2025-05-11",
+"source": "The Guardian",
+"url": "https://www.theguardian.com/uk-news/2025/may/11/will-labours-immigration-changes-make-a-clean-break",
+"summary": "The article explains the reasoning behind Labour's proposed immigration reforms and how they differ from previous migration policies."
+},
+{
+"id": 2,
+"title": "UK plans to end 'failed free market experiment' in immigration",
+"date": "2025-05-11",
+"source": "Reuters",
+"url": "https://www.reuters.com/world/uk/uk-plans-end-failed-free-market-experiment-immigration-2025-05-10/",
+"summary": "Reuters reports on the UK government's plan to tighten immigration rules by restricting skilled worker visas and pushing businesses to train local workers."
+},
+{
+"id": 3,
+"title": "UK plans to double permanent settlement wait for some migrants already in country",
+"date": "2025-05-15",
+"source": "Reuters",
+"url": "https://www.reuters.com/world/uk/uk-plans-double-permanent-settlement-wait-some-migrants-already-country-2025-05-15/",
+"summary": "This article covers proposals to make some migrants wait longer before qualifying for permanent settlement in the UK."
+},
+{
+"id": 4,
+"title": "How the Trump administration plans to keep tabs on 450,000 migrant children who crossed the border alone",
+"date": "2025-05-02",
+"source": "AP News",
+"url": "https://apnews.com/article/trump-migrant-children-immigration-sponsors-border-7a5004c88260a57ea194631a13e5941e",
+"summary": "AP explains a federal review process affecting migrant children who crossed the U.S.-Mexico border without their parents."
+}
 ]
