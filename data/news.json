@@ -1,0 +1,34 @@
+[
+  {
+    "id": 1,
+    "title": "Migration policy debate intensifies in Europe",
+    "date": "2025-05-10",
+    "source": "BBC",
+    "url": "https://www.bbc.com/news",
+    "summary": "European governments continue debating new migration and border control policies."
+  },
+  {
+    "id": 2,
+    "title": "New immigration law proposal divides parliament",
+    "date": "2025-05-12",
+    "source": "The Guardian",
+    "url": "https://www.theguardian.com",
+    "summary": "A proposed immigration reform has generated disagreement across political parties."
+  },
+  {
+    "id": 3,
+    "title": "Border policy measures spark political controversy",
+    "date": "2025-05-13",
+    "source": "El País",
+    "url": "https://elpais.com",
+    "summary": "Recent border policy decisions have raised concerns among NGOs and opposition groups."
+  },
+  {
+    "id": 4,
+    "title": "Human rights organizations criticize detention practices",
+    "date": "2025-05-14",
+    "source": "Reuters",
+    "url": "https://www.reuters.com",
+    "summary": "Several organizations have criticized current detention policies affecting migrants."
+  }
+]

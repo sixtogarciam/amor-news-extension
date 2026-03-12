@@ -27,50 +27,100 @@ function Overlay() {
           sensationalDetected: 0
         }
   
-      const newsItems = document.querySelectorAll("article, .news-item, [class*='article'], [class*='story']")
       const results: any[] = []
 
-      newsItems.forEach((item) => {
-        const text = item.textContent?.trim() || ""
+// 1) Intentar detectar un artículo principal
+const mainArticle =
+  document.querySelector("main article") ||
+  document.querySelector("article") ||
+  document.querySelector("[role='main'] article") ||
+  document.querySelector("main") ||
+  document.querySelector("[role='main']")
 
-        if (text.length < 120) return
+if (mainArticle) {
+  const text = mainArticle.textContent?.trim() || ""
 
-        const links = item.querySelectorAll("a")
-        if (links.length === 0) return
+  if (text.length >= 200) {
+    const result = analyzeArticle(text)
 
-        const result = analyzeArticle(text)
+    const htmlItem = mainArticle as HTMLElement
 
+    const moralColor =
+      result.moralLanguage > 0.7
+        ? "lightgreen"
+        : result.moralLanguage > 0.4
+          ? "lightyellow"
+          : "lightcoral"
 
-        const moralColor =
-          result.moralLanguage > 0.7
-            ? "lightgreen"
-            : result.moralLanguage > 0.4
-              ? "lightyellow"
-              : "lightcoral"
+    let borderColor = moralColor
 
-        let borderColor = moralColor
+    if (result.emotional > threshold) {
+      borderColor = CLICKBAIT_COLOR
+      analytics.clickbaitDetected += 1
+    } else if (result.exaggeration > threshold) {
+      borderColor = SENSATIONAL_COLOR
+      analytics.sensationalDetected += 1
+    }
 
-        if (result.emotional > threshold) {
-          borderColor = CLICKBAIT_COLOR
-          analytics.clickbaitDetected += 1
-        } else if (result.exaggeration > threshold) {
-          borderColor = SENSATIONAL_COLOR
-          analytics.sensationalDetected += 1
-        }
+    htmlItem.style.border = `3px solid ${borderColor}`
+    htmlItem.style.borderRadius = "8px"
+    htmlItem.style.padding = "4px"
+    htmlItem.title = `Moral: ${result.moralLanguage.toFixed(
+      2
+    )}, Emotional: ${result.emotional.toFixed(
+      2
+    )}, Exaggeration: ${result.exaggeration.toFixed(2)}`
 
-        const htmlItem = item as HTMLElement
-        htmlItem.style.border = `3px solid ${borderColor}`
-        htmlItem.style.borderRadius = "8px"
-        htmlItem.style.padding = "4px"
-        htmlItem.title = `Moral: ${result.moralLanguage.toFixed(
-          2
-        )}, Emotional: ${result.emotional.toFixed(
-          2
-        )}, Exaggeration: ${result.exaggeration.toFixed(2)}`
+    results.push({ element: htmlItem, ...result })
+    analytics.articlesAnalyzed += 1
+  }
+} else {
+  // 2) Si no hay artículo principal claro, usar fallback anterior
+  const newsItems = document.querySelectorAll(
+    "article, .news-item, [class*='article'], [class*='story']"
+  )
 
-        results.push({ element: htmlItem, ...result })
-        analytics.articlesAnalyzed += 1
-      })
+  newsItems.forEach((item) => {
+    const text = item.textContent?.trim() || ""
+
+    if (text.length < 120) return
+
+    const links = item.querySelectorAll("a")
+    if (links.length === 0) return
+
+    const result = analyzeArticle(text)
+
+    const moralColor =
+      result.moralLanguage > 0.7
+        ? "lightgreen"
+        : result.moralLanguage > 0.4
+          ? "lightyellow"
+          : "lightcoral"
+
+    let borderColor = moralColor
+
+    if (result.emotional > threshold) {
+      borderColor = CLICKBAIT_COLOR
+      analytics.clickbaitDetected += 1
+    } else if (result.exaggeration > threshold) {
+      borderColor = SENSATIONAL_COLOR
+      analytics.sensationalDetected += 1
+    }
+
+    const htmlItem = item as HTMLElement
+    htmlItem.style.border = `3px solid ${borderColor}`
+    htmlItem.style.borderRadius = "8px"
+    htmlItem.style.padding = "4px"
+    htmlItem.title = `Moral: ${result.moralLanguage.toFixed(
+      2
+    )}, Emotional: ${result.emotional.toFixed(
+      2
+    )}, Exaggeration: ${result.exaggeration.toFixed(2)}`
+
+    results.push({ element: htmlItem, ...result })
+    analytics.articlesAnalyzed += 1
+  })
+}
 
       await storageCS.set("analytics", analytics)
       setNewsAnalysis(results)
