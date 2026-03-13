@@ -119,28 +119,30 @@ const emotionalKeywords = findMatches(text, EMOTIONAL_TERMS)
 const exclamationCount = (text.match(/!/g) || []).length
 const questionCount = (text.match(/\?/g) || []).length
 
-const emotional =
-Math.min(
+const totalWords = text.trim().split(/\s+/).length
+const lengthFactor = Math.max(1, Math.sqrt(totalWords / 100))
+
+const emotional = Math.min(
 1,
-normalizeScore(emotionalKeywords.length, 6) +
-normalizeScore(exclamationCount, 8) * 0.4
+normalizeScore(emotionalKeywords.length / lengthFactor, 8) +
+normalizeScore(exclamationCount, 12) * 0.25
 )
 
-const exaggeration =
-Math.min(
+const exaggeration = Math.min(
 1,
-normalizeScore(manipulativeKeywords.length, 6) +
-normalizeScore(exclamationCount + questionCount, 10) * 0.3
+normalizeScore(manipulativeKeywords.length / lengthFactor, 8) +
+normalizeScore(exclamationCount + questionCount, 14) * 0.2
 )
 
-const moralLanguage = normalizeScore(moralKeywords.length, 6)
+const moralLanguage = normalizeScore(moralKeywords.length / lengthFactor, 10)
 
 const manipulativeScore = Math.min(
 1,
-normalizeScore(manipulativeKeywords.length, 5) +
-normalizeScore(exclamationCount, 8) * 0.3 +
-normalizeScore(questionCount, 6) * 0.2
+normalizeScore(manipulativeKeywords.length / lengthFactor, 8) +
+normalizeScore(exclamationCount, 12) * 0.2 +
+normalizeScore(questionCount, 10) * 0.15
 )
+
 
 return {
 emotional: Number(emotional.toFixed(2)),

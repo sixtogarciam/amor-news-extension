@@ -26,6 +26,72 @@ if (score >= 0.3) return "#f0ad4e"
 return "#777"
 }
 
+function highlightKeywords(
+element: HTMLElement,
+keywords: string[],
+color: string
+) {
+if (!keywords.length) return
+
+const uniqueKeywords = [...new Set(keywords)].filter(Boolean)
+
+const escapedKeywords = uniqueKeywords.map((keyword) =>
+keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+)
+
+const combinedRegex = new RegExp(`\\b(${escapedKeywords.join("|")})\\b`, "gi")
+
+const walker = document.createTreeWalker(
+element,
+NodeFilter.SHOW_TEXT,
+{
+acceptNode(node) {
+const parent = node.parentElement
+if (!parent) return NodeFilter.FILTER_REJECT
+
+const tag = parent.tagName.toLowerCase()
+
+if (
+tag === "script" ||
+tag === "style" ||
+tag === "noscript" ||
+parent.classList.contains("amor-highlight")
+) {
+return NodeFilter.FILTER_REJECT
+}
+
+if (!node.nodeValue || !node.nodeValue.trim()) {
+return NodeFilter.FILTER_REJECT
+}
+
+return NodeFilter.FILTER_ACCEPT
+}
+}
+)
+
+const textNodes: Text[] = []
+let currentNode: Node | null
+
+while ((currentNode = walker.nextNode())) {
+textNodes.push(currentNode as Text)
+}
+
+textNodes.forEach((textNode) => {
+const originalText = textNode.nodeValue || ""
+
+if (!combinedRegex.test(originalText)) return
+
+const highlightedText = originalText.replace(
+combinedRegex,
+`<span class="amor-highlight" style="background:${color}; padding:2px 4px; border-radius:3px;">$1</span>`
+)
+
+const wrapper = document.createElement("span")
+wrapper.innerHTML = highlightedText
+textNode.parentNode?.replaceChild(wrapper, textNode)
+})
+}
+
 function Overlay() {
   const [newsAnalysis, setNewsAnalysis] = React.useState<any[]>([])
 
@@ -90,6 +156,19 @@ return
 const result = analyzeArticle(bestCandidate.text)
 const htmlItem = bestCandidate.item
 
+const scores = [
+{ type: "Moral", value: result.moralLanguage },
+{ type: "Manipulative", value: result.manipulativeScore },
+{ type: "Emotional", value: result.emotional },
+{ type: "Exaggeration", value: result.exaggeration }
+]
+
+scores.sort((a, b) => b.value - a.value)
+
+highlightKeywords(htmlItem, result.moralKeywords || [], "#b7f5b7")
+highlightKeywords(htmlItem, result.manipulativeKeywords || [], "#ffb3b3")
+highlightKeywords(htmlItem, result.emotionalKeywords || [], "#ffd699")
+
 const moralColor =
 result.moralLanguage > 0.7
 ? "lightgreen"
@@ -127,6 +206,20 @@ setNewsAnalysis(results)
     analyzePage()
   }, [])
 
+  const currentItem = newsAnalysis[0]
+
+const framingScores = currentItem
+? [
+{ type: "Moral", value: currentItem.moralLanguage },
+{ type: "Manipulative", value: currentItem.manipulativeScore ?? 0 },
+{ type: "Emotional", value: currentItem.emotional },
+{ type: "Exaggeration", value: currentItem.exaggeration }
+].sort((a, b) => b.value - a.value)
+: []
+
+const dominantFraming = framingScores[0]
+const secondaryFraming = framingScores[1]
+
   if (newsAnalysis.length === 0) return null
 
   return (
@@ -147,11 +240,24 @@ setNewsAnalysis(results)
       }}>
       <h3>AMOR News Analyzer</h3>
 
+      <div style={{ marginBottom: 10, fontSize: 13, lineHeight: 1.4 }}>
+<div>
+<strong>Dominant framing:</strong>{" "}
+{dominantFraming ? dominantFraming.type : "Unknown"}
+</div>
+<div>
+<strong>Secondary signal:</strong>{" "}
+{secondaryFraming ? secondaryFraming.type : "Unknown"}
+</div>
+</div>
+
       <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
         {newsAnalysis.map((item, idx) => (
-          <li key={idx} style={{ marginBottom: 8 }}>
+          <li key={idx} style={{ marginBottom: 12 }}>
             <strong
               style={{
+                display: "block",
+                marginBottom: 6,
                 color:
                   item.emotional > 0.6
                     ? CLICKBAIT_COLOR
@@ -159,7 +265,10 @@ setNewsAnalysis(results)
                       ? SENSATIONAL_COLOR
                       : GSI
               }}>
-              {item.element.textContent?.slice(0, 80)}...
+              {(item.element.innerText || item.element.textContent || "")
+.replace(/\s+/g, " ")
+.trim()
+.slice(0, 90)}...
             </strong>
 
 
@@ -210,18 +319,18 @@ fontWeight: "bold"
 </div>
 </div>
 
-<div style={{ fontSize: 11, color: "#777", marginTop: 4 }}>
+<div style={{ fontSize: 11, color: "#777", marginTop: 8, lineHeight: 1.4 }}>
 <div>
 <strong>Moral keywords:</strong>{" "}
-{item.moralKeywords?.slice(0, 3).join(", ") || "None"}
+{item.moralKeywords?.join(", ") || "None"}
 </div>
 <div>
 <strong>Manipulative keywords:</strong>{" "}
-{item.manipulativeKeywords?.slice(0, 3).join(", ") || "None"}
+{item.manipulativeKeywords?.join(", ") || "None"}
 </div>
 <div>
 <strong>Emotional keywords:</strong>{" "}
-{item.emotionalKeywords?.slice(0, 3).join(", ") || "None"}
+{item.emotionalKeywords?.join(", ") || "None"}
 </div>
 </div>
 
