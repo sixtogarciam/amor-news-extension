@@ -26,6 +26,12 @@ if (score >= 0.3) return "#f0ad4e"
 return "#777"
 }
 
+function renderBar(score: number) {
+const filled = Math.round(score * 10)
+const empty = 10 - filled
+return "█".repeat(filled) + "░".repeat(empty)
+}
+
 function highlightKeywords(
 element: HTMLElement,
 keywords: string[],
@@ -94,6 +100,8 @@ textNode.parentNode?.replaceChild(wrapper, textNode)
 
 function Overlay() {
   const [newsAnalysis, setNewsAnalysis] = React.useState<any[]>([])
+  const [headlineAnalysis, setHeadlineAnalysis] = React.useState<any | null>(null)
+const [headlineText, setHeadlineText] = React.useState("")
 
   React.useEffect(() => {
     const analyzePage = async () => {
@@ -155,6 +163,22 @@ return
 
 const result = analyzeArticle(bestCandidate.text)
 const htmlItem = bestCandidate.item
+
+const headlineElement =
+document.querySelector("h1") ||
+bestCandidate.item.querySelector("h1") ||
+bestCandidate.item.querySelector("h2")
+
+const detectedHeadline = headlineElement?.textContent?.trim() || ""
+
+if (detectedHeadline) {
+const headlineResult = analyzeArticle(detectedHeadline)
+setHeadlineText(detectedHeadline)
+setHeadlineAnalysis(headlineResult)
+} else {
+setHeadlineText("")
+setHeadlineAnalysis(null)
+}
 
 const scores = [
 { type: "Moral", value: result.moralLanguage },
@@ -240,6 +264,70 @@ const secondaryFraming = framingScores[1]
       }}>
       <h3>AMOR News Analyzer</h3>
 
+{headlineText && (
+<div
+style={{
+marginBottom: 12,
+padding: 10,
+background: "#f7f7f7",
+borderRadius: 8,
+fontSize: 12,
+lineHeight: 1.5
+}}>
+<div style={{ marginBottom: 6 }}>
+<strong>Headline:</strong> {headlineText}
+</div>
+
+{headlineAnalysis && (
+<>
+<div>
+<strong>Headline moral:</strong> {headlineAnalysis.moralLanguage.toFixed(2)}{" "}
+<span
+style={{
+color: getLevelColor(headlineAnalysis.moralLanguage),
+fontWeight: "bold"
+}}>
+({getLevel(headlineAnalysis.moralLanguage)})
+</span>
+</div>
+
+<div>
+<strong>Headline manipulative:</strong>{" "}
+{headlineAnalysis.manipulativeScore.toFixed(2)}{" "}
+<span
+style={{
+color: getLevelColor(headlineAnalysis.manipulativeScore),
+fontWeight: "bold"
+}}>
+({getLevel(headlineAnalysis.manipulativeScore)})
+</span>
+</div>
+
+<div>
+<strong>Headline emotional:</strong> {headlineAnalysis.emotional.toFixed(2)}{" "}
+<span
+style={{
+color: getLevelColor(headlineAnalysis.emotional),
+fontWeight: "bold"
+}}>
+({getLevel(headlineAnalysis.emotional)})
+</span>
+</div>
+
+<div>
+<strong>Headline exaggeration:</strong> {headlineAnalysis.exaggeration.toFixed(2)}{" "}
+<span
+style={{
+color: getLevelColor(headlineAnalysis.exaggeration),
+fontWeight: "bold"
+}}>
+({getLevel(headlineAnalysis.exaggeration)})
+</span>
+</div>
+</>
+)}
+</div>
+)}
       <div style={{ marginBottom: 10, fontSize: 13, lineHeight: 1.4 }}>
 <div>
 <strong>Dominant framing:</strong>{" "}
@@ -249,28 +337,52 @@ const secondaryFraming = framingScores[1]
 <strong>Secondary signal:</strong>{" "}
 {secondaryFraming ? secondaryFraming.type : "Unknown"}
 </div>
+<div
+style={{
+marginBottom: 12,
+padding: 10,
+background: "#f7f7f7",
+borderRadius: 8,
+fontSize: 12,
+lineHeight: 1.6
+}}>
+<div style={{ fontWeight: "bold", marginBottom: 6 }}>
+Framing distribution
+</div>
+
+<div>
+Moral:{" "}
+<span style={{ fontFamily: "monospace" }}>
+{renderBar(currentItem?.moralLanguage ?? 0)}
+</span>
+</div>
+
+<div>
+Manipulative:{" "}
+<span style={{ fontFamily: "monospace" }}>
+{renderBar(currentItem?.manipulativeScore ?? 0)}
+</span>
+</div>
+
+<div>
+Emotional:{" "}
+<span style={{ fontFamily: "monospace" }}>
+{renderBar(currentItem?.emotional ?? 0)}
+</span>
+</div>
+
+<div>
+Exaggeration:{" "}
+<span style={{ fontFamily: "monospace" }}>
+{renderBar(currentItem?.exaggeration ?? 0)}
+</span>
+</div>
+</div>
 </div>
 
       <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
         {newsAnalysis.map((item, idx) => (
           <li key={idx} style={{ marginBottom: 12 }}>
-            <strong
-              style={{
-                display: "block",
-                marginBottom: 6,
-                color:
-                  item.emotional > 0.6
-                    ? CLICKBAIT_COLOR
-                    : item.exaggeration > 0.6
-                      ? SENSATIONAL_COLOR
-                      : GSI
-              }}>
-              {(item.element.innerText || item.element.textContent || "")
-.replace(/\s+/g, " ")
-.trim()
-.slice(0, 90)}...
-            </strong>
-
 
 <div style={{ fontSize: 12, color: "#555", lineHeight: 1.5 }}>
 <div>
@@ -316,6 +428,10 @@ fontWeight: "bold"
 }}>
 ({getLevel(item.exaggeration)})
 </span>
+</div>
+<div>
+<strong>Framing density:</strong>{" "}
+{(item.framingDensity ?? 0).toFixed(3)}
 </div>
 </div>
 

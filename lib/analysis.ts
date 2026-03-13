@@ -6,6 +6,7 @@ manipulativeScore: number
 moralKeywords: string[]
 manipulativeKeywords: string[]
 emotionalKeywords: string[]
+framingDensity: number
 }
 
 const MORAL_TERMS = [
@@ -122,6 +123,13 @@ const questionCount = (text.match(/\?/g) || []).length
 const totalWords = text.trim().split(/\s+/).length
 const lengthFactor = Math.max(1, Math.sqrt(totalWords / 100))
 
+const totalKeywords =
+moralKeywords.length +
+manipulativeKeywords.length +
+emotionalKeywords.length
+
+const framingDensity = totalKeywords / Math.max(totalWords, 1)
+
 const emotional = Math.min(
 1,
 normalizeScore(emotionalKeywords.length / lengthFactor, 8) +
@@ -149,6 +157,7 @@ emotional: Number(emotional.toFixed(2)),
 exaggeration: Number(exaggeration.toFixed(2)),
 moralLanguage: Number(moralLanguage.toFixed(2)),
 manipulativeScore: Number(manipulativeScore.toFixed(2)),
+framingDensity: Number(framingDensity.toFixed(3)),
 moralKeywords,
 manipulativeKeywords,
 emotionalKeywords
