@@ -116,128 +116,116 @@ document.body.appendChild(frame)
 return frame
 }
 
-function getFrameBounds(target: HTMLElement) {
-const containerRect = target.getBoundingClientRect()
+function getReadableParagraphs(scope: ParentNode): HTMLElement[] {
+return Array.from(scope.querySelectorAll("p")).filter((p) => {
+const el = p as HTMLElement
+const text = el.innerText?.trim() || ""
+const rect = el.getBoundingClientRect()
+const cls = `${el.className || ""} ${el.parentElement?.className || ""}`.toLowerCase()
 
-const headline = (
-document.querySelector("h1") ||
-target.querySelector("h1") ||
-target.querySelector("h2")
-) as HTMLElement | null
-
-const figures = Array.from(
-document.querySelectorAll("figure img, picture img, img")
-) as HTMLElement[]
-
-const validImages = figures.filter((img) => {
-const rect = img.getBoundingClientRect()
-if (rect.width < 220 || rect.height < 140) return false
-
-// solo imágenes cerca del artículo
-const verticallyClose =
-rect.bottom >= containerRect.top - 250 &&
-rect.top <= containerRect.bottom + 250
-
-if (!verticallyClose) return false
-
-// preferir imágenes que queden dentro o muy cerca horizontalmente
-const horizontallyClose =
-rect.right >= containerRect.left - 200 &&
-rect.left <= containerRect.right + 200
-
-return horizontallyClose
-})
-
-const paragraphs = Array.from(target.querySelectorAll("p")).filter((p) => {
-const rect = p.getBoundingClientRect()
-const text = p.innerText?.trim() || ""
-const style = window.getComputedStyle(p)
-const classText = `${p.className || ""} ${p.parentElement?.className || ""}`.toLowerCase()
-
-if (style.display === "none" || style.visibility === "hidden") return false
-if (text.length < 45) return false
-if (rect.width < 260 || rect.height < 14) return false
+if (text.length < 40) return false
+if (rect.width < 220 || rect.height < 12) return false
 
 if (
-classText.includes("related") ||
-classText.includes("promo") ||
-classText.includes("footer") ||
-classText.includes("share") ||
-classText.includes("advert") ||
-classText.includes("ad") ||
-classText.includes("caption") ||
-classText.includes("label") ||
-classText.includes("summary")
+cls.includes("related") ||
+cls.includes("promo") ||
+cls.includes("footer") ||
+cls.includes("share") ||
+cls.includes("advert") ||
+cls.includes("ad") ||
+cls.includes("caption") ||
+cls.includes("read-next") ||
+cls.includes("readnext") ||
+cls.includes("carousel") ||
+cls.includes("recommend") ||
+cls.includes("newsletter") ||
+cls.includes("social")
 ) {
 return false
 }
 
 return true
 }) as HTMLElement[]
+}
 
-let top = Number.POSITIVE_INFINITY
+function getMainImage(scope: ParentNode): HTMLElement | null {
+const imgs = Array.from(
+scope.querySelectorAll("figure img, picture img, img")
+) as HTMLElement[]
+
+for (const img of imgs) {
+const rect = img.getBoundingClientRect()
+if (rect.width >= 250 && rect.height >= 140) {
+return img
+}
+}
+
+return null
+}
+
+function getTopAnchor(bestCandidate: HTMLElement): HTMLElement {
+const headline =
+(document.querySelector("h1") as HTMLElement | null) ||
+(bestCandidate.querySelector("h1") as HTMLElement | null) ||
+(bestCandidate.querySelector("h2") as HTMLElement | null)
+
+if (headline) return headline
+
+return bestCandidate
+}
+
+function getBottomAnchor(bestCandidate: HTMLElement): HTMLElement {
+const paragraphs = getReadableParagraphs(bestCandidate)
+
+if (paragraphs.length > 0) {
+return paragraphs[paragraphs.length - 1]
+}
+
+return bestCandidate
+}
+
+function getFrameBounds(bestCandidate: HTMLElement) {
+const topAnchor = getTopAnchor(bestCandidate)
+const bottomAnchor = getBottomAnchor(bestCandidate)
+const headline =
+(document.querySelector("h1") as HTMLElement | null) ||
+(bestCandidate.querySelector("h1") as HTMLElement | null) ||
+(bestCandidate.querySelector("h2") as HTMLElement | null)
+
+const mainImage = getMainImage(bestCandidate)
+const paragraphs = getReadableParagraphs(bestCandidate)
+
+const candidateRect = bestCandidate.getBoundingClientRect()
+const topRect = topAnchor.getBoundingClientRect()
+const bottomRect = bottomAnchor.getBoundingClientRect()
+
+let top = topRect.top
+let bottom = bottomRect.bottom
+
 let left = Number.POSITIVE_INFINITY
 let right = Number.NEGATIVE_INFINITY
-let bottom = Number.NEGATIVE_INFINITY
 
-const includeRect = (rect: DOMRect) => {
-top = Math.min(top, rect.top)
+const includeWidth = (el: HTMLElement | null) => {
+if (!el) return
+const rect = el.getBoundingClientRect()
+if (rect.width < 180 || rect.height < 10) return
 left = Math.min(left, rect.left)
 right = Math.max(right, rect.right)
-bottom = Math.max(bottom, rect.bottom)
 }
 
-// 1. titular real
-if (headline) {
-const hr = headline.getBoundingClientRect()
-if (hr.width > 150 && hr.height > 24) {
-includeRect(hr)
-}
-}
+includeWidth(headline)
+includeWidth(mainImage)
+paragraphs.forEach((p) => includeWidth(p))
 
-// 2. imagen principal cercana al artículo
-if (validImages.length > 0) {
-validImages.sort((a, b) => {
-const ar = a.getBoundingClientRect()
-const br = b.getBoundingClientRect()
-
-const aDistance = Math.abs(ar.top - containerRect.top)
-const bDistance = Math.abs(br.top - containerRect.top)
-
-return aDistance - bDistance
-})
-
-const mainImageRect = validImages[0].getBoundingClientRect()
-includeRect(mainImageRect)
+if (!Number.isFinite(left) || !Number.isFinite(right) || right <= left) {
+left = candidateRect.left
+right = candidateRect.right
 }
 
-// 3. cuerpo real
-paragraphs.forEach((p) => {
-includeRect(p.getBoundingClientRect())
-})
-
-// fallback
-if (
-!Number.isFinite(top) ||
-!Number.isFinite(left) ||
-!Number.isFinite(right) ||
-!Number.isFinite(bottom) ||
-right <= left ||
-bottom <= top
-) {
-return {
-top: containerRect.top + window.scrollY,
-left: containerRect.left + window.scrollX,
-width: containerRect.width,
-height: containerRect.height
-}
-}
-
-// limitar a una zona razonable respecto al contenedor
-top = Math.max(top, containerRect.top - 220)
-left = Math.max(left, containerRect.left)
-right = Math.min(right, containerRect.right)
-bottom = Math.min(bottom, containerRect.bottom)
+top = Math.max(top, candidateRect.top)
+bottom = Math.min(bottom, candidateRect.bottom)
+left = Math.max(left, candidateRect.left)
+right = Math.min(right, candidateRect.right)
 
 const bounds = {
 top: top + window.scrollY,
@@ -251,11 +239,11 @@ console.log("AMOR frame bounds:", bounds)
 return bounds
 }
 
-function mountArticleFrame(target: HTMLElement, color: string) {
+function mountArticleFrame(bestCandidate: HTMLElement, color: string) {
 const frame = ensureArticleFrame()
 
 const updateFrame = () => {
-const bounds = getFrameBounds(target)
+const bounds = getFrameBounds(bestCandidate)
 
 if (bounds.width < 120 || bounds.height < 120) {
 frame.style.display = "none"
@@ -268,23 +256,16 @@ frame.style.left = `${Math.max(0, bounds.left - 4)}px`
 frame.style.width = `${Math.max(0, bounds.width + 8)}px`
 frame.style.height = `${Math.max(0, bounds.height + 8)}px`
 frame.style.border = `3px solid ${color}`
-frame.style.boxShadow =
-"0 0 0 2px rgba(255,255,255,0.9), 0 0 12px rgba(0,0,0,0.15)"
+frame.style.boxShadow = "0 0 0 2px rgba(255,255,255,0.9), 0 0 12px rgba(0,0,0,0.15)"
 frame.style.background = "transparent"
-}
-
-const onUpdate = () => {
-requestAnimationFrame(updateFrame)
 }
 
 updateFrame()
 
-window.addEventListener("scroll", onUpdate, true)
-window.addEventListener("resize", onUpdate)
+window.addEventListener("resize", updateFrame)
 
 return () => {
-window.removeEventListener("scroll", onUpdate, true)
-window.removeEventListener("resize", onUpdate)
+window.removeEventListener("resize", updateFrame)
 frame.style.display = "none"
 }
 }
@@ -338,6 +319,55 @@ return score
 
 function findBestArticleCandidate() : HTMLElement | null {
 
+  const headlineElement = document.querySelector("h1") as HTMLElement | null
+
+// CASO ESPECIAL AP:
+// subir desde el h1 hasta encontrar un contenedor que tenga
+// varios párrafos reales y tamaño razonable de artículo
+if (headlineElement && window.location.hostname.includes("apnews.com")) {
+let current = headlineElement.parentElement
+let bestApCandidate: HTMLElement | null = null
+let depth = 0
+
+while (current && current !== document.body && depth < 12) {
+const paragraphs = getReadableParagraphs(current)
+const rect = current.getBoundingClientRect()
+const cls = `${current.className || ""} ${current.id || ""}`.toLowerCase()
+
+const looksLikeArticle =
+paragraphs.length >= 3 &&
+rect.width >= 500 &&
+rect.width <= 1200 &&
+rect.height >= 700
+
+if (looksLikeArticle) {
+bestApCandidate = current
+}
+
+if (
+looksLikeArticle &&
+(
+cls.includes("article") ||
+cls.includes("content") ||
+cls.includes("body") ||
+cls.includes("story") ||
+cls.includes("page")
+)
+) {
+console.log("AMOR AP candidate from h1 ancestors:", current)
+return current
+}
+
+current = current.parentElement
+depth += 1
+}
+
+if (bestApCandidate) {
+console.log("AMOR AP fallback candidate:", bestApCandidate)
+return bestApCandidate
+}
+}
+
 const prioritySelectors = [
 "article",
 "[itemprop='articleBody']",
@@ -348,7 +378,10 @@ const prioritySelectors = [
 ".main-content",
 "#maincontent article",
 ".Page-lead",
-".article-body_module_content__bnXL1"
+".article-body_module_content__bnXL1",
+"[class*='Page-content']",
+"[class*='Article']",
+"[class*='Body']"
 ]
 
 for (const selector of prioritySelectors) {
@@ -360,7 +393,7 @@ return el
 }
 
 
-const headlineElement = document.querySelector("h1")
+const headlineEl = headlineElement
 
 const selectorCandidates = Array.from(
 document.querySelectorAll(`
@@ -479,6 +512,7 @@ return
 
 const articleText = bestCandidate.innerText?.trim() || ""
 const result = analyzeArticle(articleText)
+
 let htmlItem: HTMLElement = bestCandidate
 
 const headlineElement =
@@ -528,7 +562,7 @@ analytics.sensationalDetected += 1
 }
 
 frameCleanupRef.current?.()
-frameCleanupRef.current = mountArticleFrame(htmlItem, borderColor)
+frameCleanupRef.current = mountArticleFrame(bestCandidate, borderColor)
 
 htmlItem.title = `Moral: ${result.moralLanguage.toFixed(
 2
