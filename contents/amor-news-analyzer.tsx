@@ -104,7 +104,7 @@ let frame = document.getElementById("amor-article-frame") as HTMLDivElement | nu
 if (!frame) {
 frame = document.createElement("div")
 frame.id = "amor-article-frame"
-frame.style.position = "absolute"
+frame.style.position = "fixed"
 frame.style.pointerEvents = "none"
 frame.style.zIndex = "999998"
 frame.style.borderRadius = "10px"
@@ -117,11 +117,16 @@ return frame
 }
 
 function getReadableParagraphs(scope: ParentNode): HTMLElement[] {
+const headline = document.querySelector("h1") as HTMLElement | null
+const headlineRect = headline?.getBoundingClientRect()
+
 return Array.from(scope.querySelectorAll("p")).filter((p) => {
 const el = p as HTMLElement
 const text = el.innerText?.trim() || ""
 const rect = el.getBoundingClientRect()
-const cls = `${el.className || ""} ${el.parentElement?.className || ""}`.toLowerCase()
+
+const cls =
+`${el.className || ""} ${el.parentElement?.className || ""} ${el.parentElement?.id || ""}`.toLowerCase()
 
 if (text.length < 40) return false
 if (rect.width < 220 || rect.height < 12) return false
@@ -139,9 +144,25 @@ cls.includes("readnext") ||
 cls.includes("carousel") ||
 cls.includes("recommend") ||
 cls.includes("newsletter") ||
-cls.includes("social")
+cls.includes("social") ||
+cls.includes("conversation") ||
+cls.includes("comment") ||
+cls.includes("most-read") ||
+cls.includes("popular") ||
+cls.includes("sidebar") ||
+cls.includes("outbrain")
 ) {
 return false
+}
+
+// Mantener solo párrafos alineados con la columna principal del artículo
+if (headlineRect) {
+const horizontalOverlap =
+Math.min(rect.right, headlineRect.right) - Math.max(rect.left, headlineRect.left)
+
+if (horizontalOverlap < Math.min(120, headlineRect.width * 0.35)) {
+return false
+}
 }
 
 return true
@@ -177,11 +198,48 @@ return bestCandidate
 function getBottomAnchor(bestCandidate: HTMLElement): HTMLElement {
 const paragraphs = getReadableParagraphs(bestCandidate)
 
-if (paragraphs.length > 0) {
-return paragraphs[paragraphs.length - 1]
+if (paragraphs.length === 0) {
+return bestCandidate
 }
 
-return bestCandidate
+const stopSelectors = [
+"[id*='conversation']",
+"[class*='conversation']",
+"[id*='comment']",
+"[class*='comment']",
+"[id*='most-read']",
+"[class*='most-read']",
+"[id*='related']",
+"[class*='related']",
+"[id*='recommend']",
+"[class*='recommend']",
+"aside"
+]
+
+let stopTop = Number.POSITIVE_INFINITY
+
+for (const selector of stopSelectors) {
+const nodes = Array.from(document.querySelectorAll(selector)) as HTMLElement[]
+for (const node of nodes) {
+const rect = node.getBoundingClientRect()
+if (rect.height > 40) {
+stopTop = Math.min(stopTop, rect.top)
+}
+}
+}
+
+if (Number.isFinite(stopTop)) {
+const validBeforeStop = paragraphs.filter((p) => {
+const rect = p.getBoundingClientRect()
+return rect.bottom <= stopTop
+})
+
+if (validBeforeStop.length > 0) {
+return validBeforeStop[validBeforeStop.length - 1]
+}
+}
+
+return paragraphs[paragraphs.length - 1]
 }
 
 function getFrameBounds(bestCandidate: HTMLElement) {
@@ -228,8 +286,8 @@ left = Math.max(left, candidateRect.left)
 right = Math.min(right, candidateRect.right)
 
 const bounds = {
-top: top + window.scrollY,
-left: left + window.scrollX,
+top: top,
+left: left,
 width: Math.max(0, right - left),
 height: Math.max(0, bottom - top)
 }
@@ -262,9 +320,11 @@ frame.style.background = "transparent"
 
 updateFrame()
 
+window.addEventListener("scroll", updateFrame, true)
 window.addEventListener("resize", updateFrame)
 
 return () => {
+window.removeEventListener("scroll", updateFrame, true)
 window.removeEventListener("resize", updateFrame)
 frame.style.display = "none"
 }
@@ -317,44 +377,45 @@ score += 600
 return score
 }
 
-function findBestArticleCandidate() : HTMLElement | null {
+function findBestArticleCandidate(): HTMLElement | null {
+const headlineElement = document.querySelector("h1") as HTMLElement | null
+const hostname = window.location.hostname
 
-  const headlineElement = document.querySelector("h1") as HTMLElement | null
-
-// CASO ESPECIAL AP:
-// subir desde el h1 hasta encontrar un contenedor que tenga
-// varios párrafos reales y tamaño razonable de artículo
-if (headlineElement && window.location.hostname.includes("apnews.com")) {
+// ===== CASO ESPECIAL AP Y AL JAZEERA =====
+if (
+headlineElement &&
+(hostname.includes("apnews.com") || hostname.includes("aljazeera.com"))
+) {
 let current = headlineElement.parentElement
-let bestApCandidate: HTMLElement | null = null
+let bestCandidate: HTMLElement | null = null
 let depth = 0
 
 while (current && current !== document.body && depth < 12) {
 const paragraphs = getReadableParagraphs(current)
 const rect = current.getBoundingClientRect()
+const tag = current.tagName.toLowerCase()
 const cls = `${current.className || ""} ${current.id || ""}`.toLowerCase()
 
 const looksLikeArticle =
-paragraphs.length >= 3 &&
-rect.width >= 500 &&
-rect.width <= 1200 &&
-rect.height >= 700
+paragraphs.length >= 4 &&
+rect.width >= 420 &&
+rect.width <= 1100 &&
+rect.height >= 500
 
 if (looksLikeArticle) {
-bestApCandidate = current
+bestCandidate = current
 }
 
 if (
 looksLikeArticle &&
-(
-cls.includes("article") ||
-cls.includes("content") ||
-cls.includes("body") ||
-cls.includes("story") ||
-cls.includes("page")
-)
+tag !== "main" &&
+tag !== "body" &&
+!cls.includes("sidebar") &&
+!cls.includes("comment") &&
+!cls.includes("conversation") &&
+!cls.includes("related")
 ) {
-console.log("AMOR AP candidate from h1 ancestors:", current)
+console.log("AMOR special candidate from h1 ancestors:", current)
 return current
 }
 
@@ -362,9 +423,9 @@ current = current.parentElement
 depth += 1
 }
 
-if (bestApCandidate) {
-console.log("AMOR AP fallback candidate:", bestApCandidate)
-return bestApCandidate
+if (bestCandidate) {
+console.log("AMOR special fallback candidate:", bestCandidate)
+return bestCandidate
 }
 }
 
@@ -386,14 +447,14 @@ const prioritySelectors = [
 
 for (const selector of prioritySelectors) {
 const el = document.querySelector(selector) as HTMLElement | null
-if (el && el.querySelectorAll("p").length > 3) {
+if (el && getReadableParagraphs(el).length > 3) {
+const tag = el.tagName.toLowerCase()
+if (tag !== "main" && tag !== "body") {
 console.log("AMOR priority selector used:", selector)
 return el
 }
 }
-
-
-const headlineEl = headlineElement
+}
 
 const selectorCandidates = Array.from(
 document.querySelectorAll(`
@@ -414,12 +475,19 @@ main div
 
 const filteredSelectorCandidates = selectorCandidates.filter((el) => {
 const tag = el.tagName.toLowerCase()
-if (tag === "body" || tag === "html") return false
+if (tag === "body" || tag === "html" || tag === "main") return false
 
 const text = el.innerText?.trim() || ""
-const paragraphs = el.querySelectorAll("p").length
+const paragraphs = getReadableParagraphs(el).length
+const rect = el.getBoundingClientRect()
 
-return text.length > 200 && paragraphs >= 2
+return (
+text.length > 200 &&
+paragraphs >= 3 &&
+rect.width >= 350 &&
+rect.width <= 1200 &&
+rect.height >= 300
+)
 })
 
 const ancestorCandidates: HTMLElement[] = []
@@ -429,15 +497,16 @@ let current = headlineElement.parentElement
 let depth = 0
 
 while (current && current !== document.body && depth < 10) {
+const tag = current.tagName.toLowerCase()
+if (tag !== "main" && tag !== "body") {
 ancestorCandidates.push(current)
+}
 current = current.parentElement
 depth += 1
 }
 }
 
-const allCandidates = [
-...new Set([...ancestorCandidates, ...filteredSelectorCandidates])
-]
+const allCandidates = [...new Set([...ancestorCandidates, ...filteredSelectorCandidates])]
 
 const scored = allCandidates
 .map((item) => ({
@@ -456,10 +525,18 @@ let fallback = headlineElement.parentElement
 let depth = 0
 
 while (fallback && fallback !== document.body && depth < 10) {
+const tag = fallback.tagName.toLowerCase()
 const text = fallback.innerText?.trim() || ""
-const paragraphs = fallback.querySelectorAll("p").length
+const paragraphs = getReadableParagraphs(fallback).length
+const rect = fallback.getBoundingClientRect()
 
-if (text.length > 300 && paragraphs >= 2) {
+if (
+tag !== "main" &&
+text.length > 300 &&
+paragraphs >= 3 &&
+rect.width >= 350 &&
+rect.width <= 1200
+) {
 return fallback
 }
 
