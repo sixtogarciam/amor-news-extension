@@ -104,7 +104,7 @@ let frame = document.getElementById("amor-article-frame") as HTMLDivElement | nu
 if (!frame) {
 frame = document.createElement("div")
 frame.id = "amor-article-frame"
-frame.style.position = "fixed"
+frame.style.position = "absolute"
 frame.style.pointerEvents = "none"
 frame.style.zIndex = "999998"
 frame.style.borderRadius = "10px"
@@ -150,12 +150,15 @@ cls.includes("comment") ||
 cls.includes("most-read") ||
 cls.includes("popular") ||
 cls.includes("sidebar") ||
-cls.includes("outbrain")
+cls.includes("outbrain") ||
+cls.includes("podcast") ||
+cls.includes("listen") ||
+cls.includes("from-the-take") ||
+cls.includes("take")
 ) {
 return false
 }
 
-// Mantener solo párrafos alineados con la columna principal del artículo
 if (headlineRect) {
 const horizontalOverlap =
 Math.min(rect.right, headlineRect.right) - Math.max(rect.left, headlineRect.left)
@@ -213,6 +216,20 @@ const stopSelectors = [
 "[class*='related']",
 "[id*='recommend']",
 "[class*='recommend']",
+"[id*='newsletter']",
+"[class*='newsletter']",
+"[id*='podcast']",
+"[class*='podcast']",
+"[id*='listen']",
+"[class*='listen']",
+"[id*='more-from']",
+"[class*='more-from']",
+"[id*='more-news']",
+"[class*='more-news']",
+"[id*='read-next']",
+"[class*='read-next']",
+"[id*='readnext']",
+"[class*='readnext']",
 "aside"
 ]
 
@@ -220,11 +237,37 @@ let stopTop = Number.POSITIVE_INFINITY
 
 for (const selector of stopSelectors) {
 const nodes = Array.from(document.querySelectorAll(selector)) as HTMLElement[]
+
 for (const node of nodes) {
+if (!bestCandidate.contains(node)) continue
+
 const rect = node.getBoundingClientRect()
 if (rect.height > 40) {
 stopTop = Math.min(stopTop, rect.top)
 }
+}
+}
+
+const headings = Array.from(
+bestCandidate.querySelectorAll("h2, h3, h4, section, ul, ol")
+) as HTMLElement[]
+
+for (const node of headings) {
+const text = node.innerText?.trim().toLowerCase() || ""
+const rect = node.getBoundingClientRect()
+
+if (rect.height < 20) continue
+
+if (
+text.includes("related") ||
+text.includes("recommended") ||
+text.includes("more from") ||
+text.includes("listen to these podcasts") ||
+text.includes("podcasts") ||
+text.includes("read next") ||
+text.includes("most read")
+) {
+stopTop = Math.min(stopTop, rect.top)
 }
 }
 
@@ -241,6 +284,7 @@ return validBeforeStop[validBeforeStop.length - 1]
 
 return paragraphs[paragraphs.length - 1]
 }
+
 
 function getFrameBounds(bestCandidate: HTMLElement) {
 const topAnchor = getTopAnchor(bestCandidate)
@@ -286,8 +330,8 @@ left = Math.max(left, candidateRect.left)
 right = Math.min(right, candidateRect.right)
 
 const bounds = {
-top: top,
-left: left,
+top: top + window.scrollY,
+left: left + window.scrollX,
 width: Math.max(0, right - left),
 height: Math.max(0, bottom - top)
 }
@@ -299,6 +343,9 @@ return bounds
 
 function mountArticleFrame(bestCandidate: HTMLElement, color: string) {
 const frame = ensureArticleFrame()
+let rafId = 0
+let retries = 0
+let intervalId: number | null = null
 
 const updateFrame = () => {
 const bounds = getFrameBounds(bestCandidate)
@@ -314,21 +361,55 @@ frame.style.left = `${Math.max(0, bounds.left - 4)}px`
 frame.style.width = `${Math.max(0, bounds.width + 8)}px`
 frame.style.height = `${Math.max(0, bounds.height + 8)}px`
 frame.style.border = `3px solid ${color}`
-frame.style.boxShadow = "0 0 0 2px rgba(255,255,255,0.9), 0 0 12px rgba(0,0,0,0.15)"
+frame.style.boxShadow =
+"0 0 0 2px rgba(255,255,255,0.9), 0 0 12px rgba(0,0,0,0.15)"
 frame.style.background = "transparent"
+}
+
+const scheduleUpdate = () => {
+cancelAnimationFrame(rafId)
+rafId = requestAnimationFrame(updateFrame)
 }
 
 updateFrame()
 
-window.addEventListener("scroll", updateFrame, true)
-window.addEventListener("resize", updateFrame)
+window.addEventListener("resize", scheduleUpdate)
+window.addEventListener("scroll", scheduleUpdate, true)
+
+const observer = new MutationObserver(() => {
+scheduleUpdate()
+})
+
+observer.observe(bestCandidate, {
+childList: true,
+subtree: true,
+characterData: true
+})
+
+intervalId = window.setInterval(() => {
+updateFrame()
+retries += 1
+
+if (retries >= 12 && intervalId !== null) {
+clearInterval(intervalId)
+intervalId = null
+}
+}, 500)
 
 return () => {
-window.removeEventListener("scroll", updateFrame, true)
-window.removeEventListener("resize", updateFrame)
+window.removeEventListener("resize", scheduleUpdate)
+window.removeEventListener("scroll", scheduleUpdate, true)
+observer.disconnect()
+cancelAnimationFrame(rafId)
+
+if (intervalId !== null) {
+clearInterval(intervalId)
+}
+
 frame.style.display = "none"
 }
 }
+
 
 function scoreCandidate(item: HTMLElement, headlineElement: Element | null) {
 const text = item.innerText?.trim() || ""
