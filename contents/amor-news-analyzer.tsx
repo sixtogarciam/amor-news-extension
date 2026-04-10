@@ -172,173 +172,140 @@ return true
 }) as HTMLElement[]
 }
 
-function getMainImage(scope: ParentNode): HTMLElement | null {
-const imgs = Array.from(
-scope.querySelectorAll("figure img, picture img, img")
-) as HTMLElement[]
+function calculateContentRect(container: HTMLElement) {
+  const allParas = Array.from(container.querySelectorAll("p")).filter(p => {
+    const rect = p.getBoundingClientRect()
+    return p.innerText.trim().length > 40 && rect.width > 200 && rect.height > 0
+  })
 
-for (const img of imgs) {
-const rect = img.getBoundingClientRect()
-if (rect.width >= 250 && rect.height >= 140) {
-return img
+  if (allParas.length === 0) return container.getBoundingClientRect()
+
+  // 1. Definir la columna real con los 5 párrafos más largos
+  const longestParas = [...allParas].sort((a, b) => b.innerText.length - a.innerText.length).slice(0, 5)
+
+  let minPLeft = Infinity
+  let maxPRight = -Infinity
+  longestParas.forEach(p => {
+    const r = p.getBoundingClientRect()
+    minPLeft = Math.min(minPLeft, r.left)
+    maxPRight = Math.max(maxPRight, r.right)
+  })
+
+  // 2. FRENO DE MANO INFERIOR
+  let stopBottom = Infinity
+  const stopSelectors = [
+    "[id*='comment']", "[class*='comment']",
+    "[id*='related']", "[class*='related']",
+    "[id*='recommend']", "[class*='recommend']",
+    "[class*='author']", "footer", ".hub", ".tags", ".byline"
+  ]
+  
+  stopSelectors.forEach(selector => {
+    const nodes = Array.from(document.querySelectorAll(selector)) as HTMLElement[]
+    nodes.forEach(node => {
+      if (container.contains(node)) {
+        const rect = node.getBoundingClientRect()
+        if (rect.top > longestParas[0].getBoundingClientRect().top + 200 && rect.height > 10) {
+          stopBottom = Math.min(stopBottom, rect.top)
+        }
+      }
+    })
+  })
+
+  // 3. Buscamos y filtramos los elementos
+  const contentSelectors = `p, img, ul, ol, figure, h2, h3, h4`
+  const rawElements = container.querySelectorAll(contentSelectors)
+
+  const elements = Array.from(rawElements).filter(rawEl => {
+    const el = rawEl as HTMLElement
+    const text = el.innerText?.trim() || ""
+    const classes = (el.className + " " + (el.parentElement?.className || "")).toLowerCase()
+
+    const junkClasses = ["related", "read-more", "readnext", "comments", "advert", "sidebar", "promo", "newsletter", "footer", "author", "share", "tags", "social", "hub", "recommend", "byline"]
+    if (junkClasses.some(cls => classes.includes(cls))) return false
+
+    const isInsideLink = el.closest('a') !== null
+    if (isInsideLink) {
+      if (el.tagName.toLowerCase() === 'img') return false
+      if (text.length > 40) return false
+    }
+
+    const rect = el.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return false
+    if (el.tagName.toLowerCase() === 'p' && text.length < 40) return false
+    if (el.tagName.toLowerCase() === 'img' && (rect.width < 250 || rect.height < 100)) return false
+
+    // --- EL TRUCO DEL CENTRO DE GRAVEDAD ---
+    // Calculamos el centro matemático del elemento
+    const elementCenter = rect.left + (rect.width / 2)
+    
+    // Si su centro está a la izquierda de la noticia (The Guardian) o a la derecha (AP)... lo descartamos.
+    if (elementCenter < minPLeft - 20 || elementCenter > maxPRight + 20) {
+      return false
+    }
+    
+    if (rect.top >= stopBottom) return false
+
+    return true
+  })
+
+  if (elements.length === 0) return container.getBoundingClientRect()
+
+  let minTop = Infinity
+  let minLeft = Infinity
+  let maxRight = -Infinity
+  let maxBottom = -Infinity
+
+  for (const el of elements) {
+    const rect = el.getBoundingClientRect()
+    minTop = Math.min(minTop, rect.top)
+    minLeft = Math.min(minLeft, rect.left)
+    maxRight = Math.max(maxRight, rect.right)
+    maxBottom = Math.max(maxBottom, rect.bottom)
+  }
+
+  return {
+    top: minTop,
+    left: minLeft,
+    width: maxRight - minLeft,
+    height: maxBottom - minTop,
+    right: maxRight,
+    bottom: maxBottom,
+    x: minLeft,
+    y: minTop
+  }
 }
-}
-
-return null
-}
-
-function getTopAnchor(bestCandidate: HTMLElement): HTMLElement {
-const headline =
-(document.querySelector("h1") as HTMLElement | null) ||
-(bestCandidate.querySelector("h1") as HTMLElement | null) ||
-(bestCandidate.querySelector("h2") as HTMLElement | null)
-
-if (headline) return headline
-
-return bestCandidate
-}
-
-function getBottomAnchor(bestCandidate: HTMLElement): HTMLElement {
-const paragraphs = getReadableParagraphs(bestCandidate)
-
-if (paragraphs.length === 0) {
-return bestCandidate
-}
-
-const stopSelectors = [
-"[id*='conversation']",
-"[class*='conversation']",
-"[id*='comment']",
-"[class*='comment']",
-"[id*='most-read']",
-"[class*='most-read']",
-"[id*='related']",
-"[class*='related']",
-"[id*='recommend']",
-"[class*='recommend']",
-"[id*='newsletter']",
-"[class*='newsletter']",
-"[id*='podcast']",
-"[class*='podcast']",
-"[id*='listen']",
-"[class*='listen']",
-"[id*='more-from']",
-"[class*='more-from']",
-"[id*='more-news']",
-"[class*='more-news']",
-"[id*='read-next']",
-"[class*='read-next']",
-"[id*='readnext']",
-"[class*='readnext']",
-"aside"
-]
-
-let stopTop = Number.POSITIVE_INFINITY
-
-for (const selector of stopSelectors) {
-const nodes = Array.from(document.querySelectorAll(selector)) as HTMLElement[]
-
-for (const node of nodes) {
-if (!bestCandidate.contains(node)) continue
-
-const rect = node.getBoundingClientRect()
-if (rect.height > 40) {
-stopTop = Math.min(stopTop, rect.top)
-}
-}
-}
-
-const headings = Array.from(
-bestCandidate.querySelectorAll("h2, h3, h4, section, ul, ol")
-) as HTMLElement[]
-
-for (const node of headings) {
-const text = node.innerText?.trim().toLowerCase() || ""
-const rect = node.getBoundingClientRect()
-
-if (rect.height < 20) continue
-
-if (
-text.includes("related") ||
-text.includes("recommended") ||
-text.includes("more from") ||
-text.includes("listen to these podcasts") ||
-text.includes("podcasts") ||
-text.includes("read next") ||
-text.includes("most read")
-) {
-stopTop = Math.min(stopTop, rect.top)
-}
-}
-
-if (Number.isFinite(stopTop)) {
-const validBeforeStop = paragraphs.filter((p) => {
-const rect = p.getBoundingClientRect()
-return rect.bottom <= stopTop
-})
-
-if (validBeforeStop.length > 0) {
-return validBeforeStop[validBeforeStop.length - 1]
-}
-}
-
-return paragraphs[paragraphs.length - 1]
-}
-
 
 function getFrameBounds(bestCandidate: HTMLElement) {
-const topAnchor = getTopAnchor(bestCandidate)
-const bottomAnchor = getBottomAnchor(bestCandidate)
-const headline =
-(document.querySelector("h1") as HTMLElement | null) ||
-(bestCandidate.querySelector("h1") as HTMLElement | null) ||
-(bestCandidate.querySelector("h2") as HTMLElement | null)
+  const contentRect = calculateContentRect(bestCandidate)
+  
+  let top = contentRect.top
+  let left = contentRect.left
+  let width = contentRect.width
+  let bottom = contentRect.bottom
 
-const mainImage = getMainImage(bestCandidate)
-const paragraphs = getReadableParagraphs(bestCandidate)
+  const headline = document.querySelector("h1") as HTMLElement | null
+  if (headline) {
+    const hRect = headline.getBoundingClientRect()
+    // Quitamos la restricción de que hRect.top >= 0 para que no lo pierda al hacer scroll
+    if (hRect.top < top && hRect.bottom <= top + 300) {
+      top = hRect.top 
+    }
+    // Ajustamos el ancho si el título sobresale un poco
+    if (hRect.width > width) {
+      left = Math.min(left, hRect.left)
+      width = hRect.width
+    }
+  }
 
-const candidateRect = bestCandidate.getBoundingClientRect()
-const topRect = topAnchor.getBoundingClientRect()
-const bottomRect = bottomAnchor.getBoundingClientRect()
+  const bounds = {
+    top: top + window.scrollY,
+    left: left + window.scrollX,
+    width: Math.max(0, width),
+    height: Math.max(0, bottom - top)
+  }
 
-let top = topRect.top
-let bottom = bottomRect.bottom
-
-let left = Number.POSITIVE_INFINITY
-let right = Number.NEGATIVE_INFINITY
-
-const includeWidth = (el: HTMLElement | null) => {
-if (!el) return
-const rect = el.getBoundingClientRect()
-if (rect.width < 180 || rect.height < 10) return
-left = Math.min(left, rect.left)
-right = Math.max(right, rect.right)
-}
-
-includeWidth(headline)
-includeWidth(mainImage)
-paragraphs.forEach((p) => includeWidth(p))
-
-if (!Number.isFinite(left) || !Number.isFinite(right) || right <= left) {
-left = candidateRect.left
-right = candidateRect.right
-}
-
-top = Math.max(top, candidateRect.top)
-bottom = Math.min(bottom, candidateRect.bottom)
-left = Math.max(left, candidateRect.left)
-right = Math.min(right, candidateRect.right)
-
-const bounds = {
-top: top + window.scrollY,
-left: left + window.scrollX,
-width: Math.max(0, right - left),
-height: Math.max(0, bottom - top)
-}
-
-console.log("AMOR frame bounds:", bounds)
-
-return bounds
+  return bounds
 }
 
 function mountArticleFrame(bestCandidate: HTMLElement, color: string) {
@@ -411,222 +378,71 @@ frame.style.display = "none"
 }
 
 
-function scoreCandidate(item: HTMLElement, headlineElement: Element | null) {
-const text = item.innerText?.trim() || ""
-const paragraphs = item.querySelectorAll("p").length
-const links = item.querySelectorAll("a").length
-const headings = item.querySelectorAll("h1, h2").length
-const nestedArticles = item.querySelectorAll("article").length
-
-const rect = item.getBoundingClientRect()
-const area = rect.width * rect.height
-const viewportArea = window.innerWidth * window.innerHeight
-
-if (text.length < 400) return -Infinity
-if (paragraphs < 3) return -Infinity
-if (rect.width < 280 || rect.height < 180) return -Infinity
-
-// Evitar bloques gigantes tipo página completa
-if (area > viewportArea * 3.5) return -Infinity
-
-// Evitar contenedores muy “navegacionales”
-if (links > paragraphs * 3) return -Infinity
-
-let score = 0
-
-score += Math.min(text.length, 12000)
-score += paragraphs * 500
-score += headings * 250
-score -= links * 25
-score -= nestedArticles * 150
-
-if (headlineElement && item.contains(headlineElement)) {
-score += 3000
-}
-
-const classText = `${item.className || ""} ${item.id || ""}`.toLowerCase()
-
-if (
-classText.includes("article") ||
-classText.includes("story") ||
-classText.includes("content") ||
-classText.includes("body")
-) {
-score += 600
-}
-
-return score
-}
-
 function findBestArticleCandidate(): HTMLElement | null {
-const headlineElement = document.querySelector("h1") as HTMLElement | null
-const hostname = window.location.hostname
+  // 1. Recopilamos todos los contenedores posibles de la página
+  const candidates = Array.from(
+    document.querySelectorAll(`
+      article, [itemprop="articleBody"], [role="article"],
+      .article-body, .story-body, .post-content, .entry-content,
+      main, section, div
+    `)
+  ) as HTMLElement[]
 
-// ===== CASO ESPECIAL AP Y AL JAZEERA =====
-if (
-headlineElement &&
-(hostname.includes("apnews.com") || hostname.includes("aljazeera.com"))
-) {
-let current = headlineElement.parentElement
-let bestCandidate: HTMLElement | null = null
-let depth = 0
+  // 2. Filtramos los que son demasiado pequeños para ser una noticia
+  const validCandidates = candidates.filter(el => {
+    const tag = el.tagName.toLowerCase()
+    if (tag === "body" || tag === "html") return false
+    
+    const rect = el.getBoundingClientRect()
+    const textLength = el.innerText?.trim().length || 0
+    return rect.width > 300 && rect.height > 200 && textLength > 250
+  })
 
-while (current && current !== document.body && depth < 12) {
-const paragraphs = getReadableParagraphs(current)
-const rect = current.getBoundingClientRect()
-const tag = current.tagName.toLowerCase()
-const cls = `${current.className || ""} ${current.id || ""}`.toLowerCase()
+  // 3. Puntuamos cada contenedor basándonos en su densidad de texto vs enlaces
+  const scored = validCandidates.map(item => {
+    let score = 0
+    const pCount = item.querySelectorAll("p").length
+    const aCount = item.querySelectorAll("a").length
+    const textLength = item.innerText?.length || 0
+    
+    // Si no hay apenas párrafos, o hay muchísimos enlaces (es un menú o footer), lo descartamos
+    if (pCount < 2) return { item, score: -Infinity }
+    if (aCount > pCount * 4) return { item, score: -Infinity }
 
-const looksLikeArticle =
-paragraphs.length >= 4 &&
-rect.width >= 420 &&
-rect.width <= 1100 &&
-rect.height >= 500
+    // Premiamos la cantidad de texto y párrafos (el cuerpo de la noticia)
+    score += pCount * 50
+    score += textLength / 100
 
-if (looksLikeArticle) {
-bestCandidate = current
-}
+    // Premiamos si la clase HTML suena a artículo
+    const cls = (item.className + " " + item.id).toLowerCase()
+    if (cls.includes("article") || cls.includes("story") || cls.includes("content")) {
+      score += 200
+    }
+    // Penalizamos si la clase suena a menú lateral o comentarios
+    if (cls.includes("sidebar") || cls.includes("comment") || cls.includes("footer") || cls.includes("related")) {
+      score -= 500
+    }
 
-if (
-looksLikeArticle &&
-tag !== "main" &&
-tag !== "body" &&
-!cls.includes("sidebar") &&
-!cls.includes("comment") &&
-!cls.includes("conversation") &&
-!cls.includes("related")
-) {
-console.log("AMOR special candidate from h1 ancestors:", current)
-return current
-}
+    // Penalizamos suavemente si es extremadamente ancho (para evitar coger toda la web entera)
+    if (item.getBoundingClientRect().width > 1200) {
+      score -= 300
+    }
 
-current = current.parentElement
-depth += 1
-}
+    return { item, score }
+  }).filter(x => x.score > 0).sort((a, b) => b.score - a.score)
 
-if (bestCandidate) {
-console.log("AMOR special fallback candidate:", bestCandidate)
-return bestCandidate
-}
-}
+  // 4. Devolvemos el ganador
+  if (scored.length > 0) {
+    console.log("AMOR Nuevo Mejor Candidato:", scored[0].item)
+    return scored[0].item
+  }
 
-const prioritySelectors = [
-"article",
-"[itemprop='articleBody']",
-"[data-gu-name='body']",
-".article-body",
-".article__body",
-".story-body",
-".main-content",
-"#maincontent article",
-".Page-lead",
-".article-body_module_content__bnXL1",
-"[class*='Page-content']",
-"[class*='Article']",
-"[class*='Body']"
-]
-
-for (const selector of prioritySelectors) {
-const el = document.querySelector(selector) as HTMLElement | null
-if (el && getReadableParagraphs(el).length > 3) {
-const tag = el.tagName.toLowerCase()
-if (tag !== "main" && tag !== "body") {
-console.log("AMOR priority selector used:", selector)
-return el
-}
-}
-}
-
-const selectorCandidates = Array.from(
-document.querySelectorAll(`
-article,
-[itemprop="articleBody"],
-[role="article"],
-[class*="article-body"],
-[class*="story-body"],
-[class*="post-content"],
-[class*="entry-content"],
-[class*="article-content"],
-[class*="article__content"],
-[class*="ArticleBody"],
-main section,
-main div
-`)
-) as HTMLElement[]
-
-const filteredSelectorCandidates = selectorCandidates.filter((el) => {
-const tag = el.tagName.toLowerCase()
-if (tag === "body" || tag === "html" || tag === "main") return false
-
-const text = el.innerText?.trim() || ""
-const paragraphs = getReadableParagraphs(el).length
-const rect = el.getBoundingClientRect()
-
-return (
-text.length > 200 &&
-paragraphs >= 3 &&
-rect.width >= 350 &&
-rect.width <= 1200 &&
-rect.height >= 300
-)
-})
-
-const ancestorCandidates: HTMLElement[] = []
-
-if (headlineElement) {
-let current = headlineElement.parentElement
-let depth = 0
-
-while (current && current !== document.body && depth < 10) {
-const tag = current.tagName.toLowerCase()
-if (tag !== "main" && tag !== "body") {
-ancestorCandidates.push(current)
-}
-current = current.parentElement
-depth += 1
-}
-}
-
-const allCandidates = [...new Set([...ancestorCandidates, ...filteredSelectorCandidates])]
-
-const scored = allCandidates
-.map((item) => ({
-item,
-score: scoreCandidate(item, headlineElement)
-}))
-.filter((entry) => Number.isFinite(entry.score))
-.sort((a, b) => b.score - a.score)
-
-if (scored.length > 0) {
-return scored[0].item
-}
-
-if (headlineElement) {
-let fallback = headlineElement.parentElement
-let depth = 0
-
-while (fallback && fallback !== document.body && depth < 10) {
-const tag = fallback.tagName.toLowerCase()
-const text = fallback.innerText?.trim() || ""
-const paragraphs = getReadableParagraphs(fallback).length
-const rect = fallback.getBoundingClientRect()
-
-if (
-tag !== "main" &&
-text.length > 300 &&
-paragraphs >= 3 &&
-rect.width >= 350 &&
-rect.width <= 1200
-) {
-return fallback
-}
-
-fallback = fallback.parentElement
-depth += 1
-}
-}
-
-return null
+  // 5. Salvavidas extremo: Si todo falla (ej. Al Jazeera), buscamos la etiqueta article o el H1
+  console.log("AMOR Usando salvavidas para encontrar candidato")
+  const fallbackArticle = document.querySelector("article")
+  const fallbackH1 = document.querySelector("h1")
+  
+  return fallbackArticle || (fallbackH1?.parentElement as HTMLElement) || null
 }
 
 function Overlay() {

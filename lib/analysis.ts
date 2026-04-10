@@ -103,9 +103,12 @@ const EMOTIONAL_TERMS = [
 "vulnerable"
 ]
 function findMatches(text: string, terms: string[]): string[] {
-const lowerText = text.toLowerCase()
-
-return terms.filter((term) => lowerText.includes(term.toLowerCase()))
+  return terms.filter((term) => {
+    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`\\b${escapedTerm}\\b`, "i");
+    
+    return regex.test(text);
+  });
 }
 
 function normalizeScore(count: number, maxCount: number): number {
