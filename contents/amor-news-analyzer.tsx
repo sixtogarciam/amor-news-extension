@@ -116,7 +116,6 @@ function highlightKeywords(element: HTMLElement, keywords: string[], color: stri
 function Overlay() {
   const [newsAnalysis, setNewsAnalysis] = React.useState<any[]>([])
   
-  // AÑADIDO: Variables de estado para el titular
   const [headlineAnalysis, setHeadlineAnalysis] = React.useState<any | null>(null)
   const [headlineText, setHeadlineText] = React.useState("")
 
@@ -144,10 +143,9 @@ function Overlay() {
       const articleText = articleData.textContent?.trim() || ""
       const result = analyzeArticle(articleText, articleCategory, articleLanguage)
 
-      // AÑADIDO: Lógica para analizar el titular
       const detectedHeadline = articleData.title?.trim() || ""
       if (detectedHeadline) {
-        const headlineResult = analyzeArticle(detectedHeadline, "general", articleLanguage)
+        const headlineResult = analyzeArticle(detectedHeadline, "general", articleLanguage, true)
         setHeadlineText(detectedHeadline)
         setHeadlineAnalysis(headlineResult)
       } else {
@@ -211,7 +209,6 @@ function Overlay() {
           </div>
         </div>
 
-        {/* AÑADIDO: Interfaz gráfica del análisis del titular */}
         {headlineText && headlineAnalysis && (
           <div style={{ background: "#f8f9fa", borderRadius: 8, padding: 12, border: "1px solid #eee", marginBottom: 24 }}>
             <h4 style={{ margin: "0 0 8px 0", fontSize: 12, color: "#555", textTransform: "uppercase" }}>Headline Analysis</h4>
@@ -247,21 +244,18 @@ function Overlay() {
           
           <div style={{ marginBottom: 8 }}>
             {currentItem?.moralKeywords?.length > 0 ? (
-              // AQUÍ ESTÁ LA CORRECCIÓN: [...new Set(...)]
               [...new Set(currentItem.moralKeywords)].map((kw: string, i: number) => <KeywordChip key={`m-${i}`} word={kw} bgColor="#dff0d8" />)
             ) : <span style={{ fontSize: 11, color: "#999" }}>No moral lexicon detected.</span>}
           </div>
           
           <div style={{ marginBottom: 8 }}>
             {currentItem?.manipulativeKeywords?.length > 0 && (
-              // AQUÍ ESTÁ LA CORRECCIÓN: [...new Set(...)]
               [...new Set(currentItem.manipulativeKeywords)].map((kw: string, i: number) => <KeywordChip key={`man-${i}`} word={kw} bgColor="#f2dede" />)
             )}
           </div>
           
           <div>
             {currentItem?.emotionalKeywords?.length > 0 && (
-              // AQUÍ ESTÁ LA CORRECCIÓN: [...new Set(...)]
               [...new Set(currentItem.emotionalKeywords)].map((kw: string, i: number) => <KeywordChip key={`e-${i}`} word={kw} bgColor="#fcf8e3" />)
             )}
           </div>
