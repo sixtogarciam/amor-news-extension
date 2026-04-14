@@ -1,6 +1,6 @@
 import * as React from "react"
-import * as ReactDOM from "react-dom"
 import { Storage } from "@plasmohq/storage"
+import { useStorage } from "@plasmohq/storage/hook" // <-- ¡El import en tiempo real!
 import { analyzeArticle } from "~lib/analysis"
 import { Readability } from "@mozilla/readability"
 
@@ -9,9 +9,19 @@ import logoBase64 from "data-base64:~assets/logo_amor.png"
 
 export const config = {
   matches: ["<all_urls>"],
+  exclude_matches: [
+    "*://*.google.com/*",
+    "*://*.google.es/*",
+    "*://*.bing.com/*", 
+    "*://*.youtube.com/*",
+    "*://*.twitter.com/*",
+    "*://*.x.com/*",
+    "*://*.facebook.com/*",
+    "*://*.wikipedia.org/*",
+    "*://*.instagram.com/*"
+  ],
   run_at: "document_idle"
 }
-
 const storageCS = new Storage()
 const GSI = "#00a9e0"
 
@@ -53,6 +63,35 @@ function detectArticleCategory(): string {
     return "satire";
   }
   return "general";
+}
+
+function isNewsArticle(): boolean {
+  const path = window.location.pathname;
+
+  if (path === '/' || path === '/index.html' || path.length < 25) {
+    return false;
+  }
+
+  const isOgArticle = document.querySelector('meta[property="og:type"]')?.getAttribute("content")?.toLowerCase() === "article";
+  const hasPublishedTime = !!document.querySelector('meta[property="article:published_time"]');
+  const hasAuthor = !!document.querySelector('meta[name="author"]') || !!document.querySelector('meta[property="article:author"]');
+
+  if (isOgArticle || hasPublishedTime || hasAuthor) {
+    return true;
+  }
+
+  const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+  for (const script of scripts) {
+    try {
+      const data = JSON.parse(script.textContent || "{}");
+      const types = JSON.stringify(data).toLowerCase();
+      if (types.includes('"newsarticle"') || types.includes('"reportagenewsarticle"') || types.includes('"article"')) {
+        return true;
+      }
+    } catch (e) {}
+  }
+
+  return false;
 }
 
 function ProgressBar({ label, score, color }: { label: string; score: number; color: string }) {
@@ -113,14 +152,39 @@ function highlightKeywords(element: HTMLElement, keywords: string[], color: stri
   })
 }
 
-function Overlay() {
+export default function Overlay() {
+  // --- CONEXIÓN EN TIEMPO REAL CON EL BOTÓN DEL POPUP ---
+  const [isActive] = useStorage("extension_active", true)
+
   const [newsAnalysis, setNewsAnalysis] = React.useState<any[]>([])
-  
   const [headlineAnalysis, setHeadlineAnalysis] = React.useState<any | null>(null)
   const [headlineText, setHeadlineText] = React.useState("")
 
   React.useEffect(() => {
+    // Si la extensión está apagada, no hacemos nada de análisis
+    if (!isActive) return;
+
+    // Si ya hemos analizado esta página, evitamos volver a hacerlo
+    if (newsAnalysis.length > 0) return;
+
     const analyzePage = async () => {
+      let attempts = 0;
+      let validArticleFound = false;
+
+      while (attempts < 6) {
+        if (isNewsArticle()) {
+          validArticleFound = true;
+          break; 
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+        attempts++;
+      }
+
+      if (!validArticleFound) {
+        console.log("AMOR: Esto no parece una noticia o es un buscador. Menú desactivado.");
+        return; 
+      }
+
       const analytics = (await storageCS.get<any>("analytics")) || { articlesAnalyzed: 0, clickbaitDetected: 0, sensationalDetected: 0 }
       const results: any[] = []
 
@@ -158,13 +222,22 @@ function Overlay() {
       highlightKeywords(document.body, result.emotionalKeywords || [], "#ffd699")
 
       results.push({ element: document.body, ...result })
-      analytics.articlesAnalyzed += 1
+      
+      // ESTADÍSTICAS REALES
+      analytics.articlesAnalyzed += 1;
+      if (result.emotional >= 0.6) analytics.clickbaitDetected += 1;
+      if (result.exaggeration >= 0.6) analytics.sensationalDetected += 1;
+
+      // Guardamos y actualizamos estado
       await storageCS.set("analytics", analytics)
       setNewsAnalysis(results)
     }
 
     analyzePage()
-  }, [])
+  }, [isActive]) // <-- Le decimos a React que escuche los cambios de isActive
+
+  // Si está apagada o no hay resultados, el menú desaparece al instante
+  if (!isActive || newsAnalysis.length === 0) return null
 
   const currentItem = newsAnalysis[0]
 
@@ -179,8 +252,6 @@ function Overlay() {
 
   const dominantFraming = framingScores[0]
   const secondaryFraming = framingScores[1]
-
-  if (newsAnalysis.length === 0) return null
 
   return (
     <div style={{
@@ -264,12 +335,4 @@ function Overlay() {
       </div>
     </div>
   )
-}
-
-const existingRoot = document.getElementById("amor-overlay-root")
-if (!existingRoot) {
-  const container = document.createElement("div")
-  container.id = "amor-overlay-root"
-  document.body.appendChild(container)
-  ReactDOM.render(<Overlay />, container)
 }

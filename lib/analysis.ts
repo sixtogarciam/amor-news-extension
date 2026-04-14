@@ -69,7 +69,7 @@ export function analyzeArticle(text: string, category: string = "general", langu
   // Si es titular, somos muchísimo más sensibles (los umbrales bajan a la mitad)
   const maxEmotional = isHeadline ? 3 : 6;
   const maxManipulative = isHeadline ? 3 : 6;
-  const maxMoral = isHeadline ? 4 : 12;
+  const maxMoral = isHeadline ? 4 : 18;
   const maxExclamations = isHeadline ? 4 : 10;
 
   const emotionalRaw = normalizeScore(emotionalKeywords.length / lengthFactor, maxEmotional) + normalizeScore(exclamationCount, maxExclamations) * 0.25;

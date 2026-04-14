@@ -1,32 +1,49 @@
 import * as React from "react"
-import newsData from "./data/news.json"
-import { analyzeArticle } from "~lib/analysis"
+import { Storage } from "@plasmohq/storage"
 
+// @ts-ignore
 import logoBase64 from "data-base64:~assets/logo_amor.png"
 
-type NewsItem = {
-  id: number
-  title: string
-  date: string
-  source: string
-  url: string
-  summary: string
-}
-
-function getLevel(score: number) {
-  if (score >= 0.6) return "High"
-  if (score >= 0.3) return "Medium"
-  return "Low"
-}
-
-function getLevelColor(score: number) {
-  if (score >= 0.6) return "#d9534f" 
-  if (score >= 0.3) return "#f0ad4e" 
-  return "#777" 
-}
+const storage = new Storage()
 
 function IndexPopup() {
-  const news = newsData as NewsItem[]
+  const [analytics, setAnalytics] = React.useState({
+    articlesAnalyzed: 0,
+    clickbaitDetected: 0,
+    sensationalDetected: 0
+  })
+  
+  const [isActive, setIsActive] = React.useState(true)
+
+  React.useEffect(() => {
+    // 1. Leer las estadísticas guardadas
+    storage.get("analytics").then((val: any) => {
+      if (val) {
+        setAnalytics({
+          articlesAnalyzed: val.articlesAnalyzed || 0,
+          clickbaitDetected: val.clickbaitDetected || 0,
+          sensationalDetected: val.sensationalDetected || 0
+        })
+      }
+    })
+
+    // 2. Leer si la extensión está encendida o apagada
+    storage.get("extension_active").then((val: any) => {
+      if (typeof val === "boolean") {
+        setIsActive(val)
+      } else {
+        // Por defecto, si es la primera vez, la encendemos
+        storage.set("extension_active", true)
+      }
+    })
+  }, [])
+
+  // Función para encender/apagar la extensión
+  const toggleExtension = async () => {
+    const newState = !isActive
+    setIsActive(newState)
+    await storage.set("extension_active", newState)
+  }
 
   return (
     <div
@@ -42,7 +59,7 @@ function IndexPopup() {
         overflow: "hidden"
       }}>
       
-      {/* CABECERA GSI */}
+      {/* CABECERA GSI (DISEÑO INTACTO) */}
       <div style={{ 
         width: "100%", 
         padding: "16px", 
@@ -54,12 +71,10 @@ function IndexPopup() {
         position: "relative",
         flexShrink: 0
       }}>
-        {/* LOGO */}
         <div style={{ width: "64px", flexShrink: 0 }}>
           <img src={logoBase64} alt="Logo" style={{ width: "100%", height: "auto" }} />
         </div>
 
-        {/* TÍTULO (Solo "News Explorer") */}
         <h1 style={{ 
           margin: 0,
           position: "absolute",
@@ -70,111 +85,91 @@ function IndexPopup() {
           fontWeight: "bold", 
           whiteSpace: "nowrap"
         }}>
-          News Explorer
+          Framing Monitor
         </h1>
 
-        {/* Div vacío para mantener el centrado perfecto */}
         <div style={{ width: "64px", flexShrink: 0 }}></div>
       </div>
 
-      {/* SUBTÍTULO / DESCRIPCIÓN */}
-      <div style={{ padding: "0 20px 16px 20px", flexShrink: 0, textAlign: "center" }}>
-        <p style={{ margin: 0, fontSize: "14px", color: "#4b5563", lineHeight: 1.5 }}>
-          Prototype news dataset with basic framing analysis.
+      {/* ÁREA DEL INTERRUPTOR (Reemplaza al subtítulo) */}
+      <div style={{ padding: "0 20px 16px 20px", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+        <p style={{ margin: 0, fontSize: "14px", color: "#4b5563", lineHeight: 1.5, textAlign: "center" }}>
+          {isActive 
+            ? "The analyzer is running in the background." 
+            : "The analyzer is currently paused."}
         </p>
+        
+        <button
+          onClick={toggleExtension}
+          style={{
+            backgroundColor: isActive ? "#d9534f" : "#5cb85c", // Rojo para apagar, Verde para encender
+            color: "white",
+            border: "none",
+            borderRadius: "20px",
+            padding: "8px 24px",
+            fontSize: "14px",
+            fontWeight: "bold",
+            cursor: "pointer",
+            boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+            transition: "background-color 0.2s ease"
+          }}
+        >
+          {isActive ? "Turn OFF Analyzer" : "Turn ON Analyzer"}
+        </button>
       </div>
 
-      {/* LISTA DE NOTICIAS */}
+      {/* DASHBOARD DE ESTADÍSTICAS (Usando tus cajitas con sombra) */}
       <div style={{ padding: "0 16px 16px 16px", overflowY: "auto", flexGrow: 1, display: "flex", flexDirection: "column", gap: "16px" }}>
-        {news.map((item) => {
-          const analysis = analyzeArticle(`${item.title}. ${item.summary}`)
+        
+        <h3 style={{ margin: "0 0 4px 0", fontSize: "16px", color: "#1f2937", paddingLeft: "4px" }}>
+          Your Reading Stats
+        </h3>
 
-          return (
-            <div
-              key={item.id}
-              style={{
-                background: "white",
-                borderRadius: "12px",
-                padding: "16px",
-                boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-                border: "1px solid #f3f4f6" 
-              }}>
-              
-              <h4 style={{ margin: "0 0 6px 0", fontSize: "15px", color: "#1f2937", lineHeight: 1.4, fontWeight: "bold" }}>
-                {item.title}
-              </h4>
-              <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "12px" }}>
-                {item.source} · {item.date}
-              </div>
+        {/* Tarjeta 1: Total Analizado */}
+        <div style={{
+          background: "white",
+          borderRadius: "12px",
+          padding: "16px",
+          boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+          border: "1px solid #f3f4f6",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center"
+        }}>
+          <span style={{ fontSize: "15px", color: "#4b5563", fontWeight: "500" }}>Articles Analyzed</span>
+          <span style={{ fontSize: "24px", fontWeight: "bold", color: "#00a9e0" }}>{analytics.articlesAnalyzed}</span>
+        </div>
 
-              <div style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#4b5563", lineHeight: 1.5 }}>
-                {item.summary}
-              </div>
+        {/* Tarjeta 2: Clickbait/Emocional */}
+        <div style={{
+          background: "white",
+          borderRadius: "12px",
+          padding: "16px",
+          boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+          border: "1px solid #f3f4f6",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center"
+        }}>
+          <span style={{ fontSize: "15px", color: "#4b5563", fontWeight: "500" }}>High Emotion Warnings</span>
+          <span style={{ fontSize: "24px", fontWeight: "bold", color: "#f0ad4e" }}>{analytics.clickbaitDetected}</span>
+        </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "16px", backgroundColor: "#f9fafb", padding: "10px", borderRadius: "8px" }}>
-                <div style={{ fontSize: "12px", color: "#374151" }}>
-                  <strong>Moral:</strong>{" "}
-                  <span style={{ color: getLevelColor(analysis.moralLanguage), fontWeight: "bold" }}>
-                    {analysis.moralLanguage.toFixed(2)} ({getLevel(analysis.moralLanguage)})
-                  </span>
-                </div>
-                <div style={{ fontSize: "12px", color: "#374151" }}>
-                  <strong>Manipulative:</strong>{" "}
-                  <span style={{ color: getLevelColor(analysis.manipulativeScore), fontWeight: "bold" }}>
-                    {analysis.manipulativeScore.toFixed(2)} ({getLevel(analysis.manipulativeScore)})
-                  </span>
-                </div>
-                <div style={{ fontSize: "12px", color: "#374151" }}>
-                  <strong>Emotional:</strong>{" "}
-                  <span style={{ color: getLevelColor(analysis.emotional), fontWeight: "bold" }}>
-                    {analysis.emotional.toFixed(2)} ({getLevel(analysis.emotional)})
-                  </span>
-                </div>
-              </div>
+        {/* Tarjeta 3: Exageración */}
+        <div style={{
+          background: "white",
+          borderRadius: "12px",
+          padding: "16px",
+          boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+          border: "1px solid #f3f4f6",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center"
+        }}>
+          <span style={{ fontSize: "15px", color: "#4b5563", fontWeight: "500" }}>Exaggerated Headlines</span>
+          <span style={{ fontSize: "24px", fontWeight: "bold", color: "#d9534f" }}>{analytics.sensationalDetected}</span>
+        </div>
 
-              <div style={{ fontSize: "12px", color: "#4b5563", marginBottom: "16px", lineHeight: 1.6 }}>
-                <div>
-                  <strong>Moral keywords:</strong>{" "}
-                  {analysis.moralKeywords.length > 0 
-                    ? analysis.moralKeywords.slice(0, 3).map((kw, i) => (
-                        <span key={i} style={{ background: "#dcfce7", padding: "2px 6px", borderRadius: "4px", color: "#166534", marginRight: "4px", display: "inline-block", marginBottom: "2px" }}>{kw}</span>
-                      ))
-                    : "None"}
-                </div>
-                <div style={{ marginTop: "4px" }}>
-                  <strong>Manipulative keywords:</strong>{" "}
-                  {analysis.manipulativeKeywords.length > 0 
-                    ? analysis.manipulativeKeywords.slice(0, 3).map((kw, i) => (
-                        <span key={i} style={{ background: "#fee2e2", padding: "2px 6px", borderRadius: "4px", color: "#991b1b", marginRight: "4px", display: "inline-block", marginBottom: "2px" }}>{kw}</span>
-                      ))
-                    : "None"}
-                </div>
-                <div style={{ marginTop: "4px" }}>
-                  <strong>Emotional keywords:</strong>{" "}
-                  {analysis.emotionalKeywords.length > 0 
-                    ? analysis.emotionalKeywords.slice(0, 3).map((kw, i) => (
-                        <span key={i} style={{ background: "#fef3c7", padding: "2px 6px", borderRadius: "4px", color: "#92400e", marginRight: "4px", display: "inline-block", marginBottom: "2px" }}>{kw}</span>
-                      ))
-                    : "None"}
-                </div>
-              </div>
-
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  display: "inline-block",
-                  fontSize: "13px",
-                  color: "#00a9e0",
-                  textDecoration: "none",
-                  fontWeight: "bold"
-                }}>
-                Open article →
-              </a>
-            </div>
-          )
-        })}
       </div>
     </div>
   )
