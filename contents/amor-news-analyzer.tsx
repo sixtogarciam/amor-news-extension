@@ -152,6 +152,17 @@ function highlightKeywords(element: HTMLElement, keywords: string[], color: stri
   })
 }
 
+function removeHighlights() {
+  // Buscamos todas las etiquetas que hemos inyectado
+  const highlights = document.querySelectorAll('span.amor-highlight');
+  
+  // Por cada una, sacamos su texto limpio y borramos la etiqueta de color
+  highlights.forEach(span => {
+    const cleanText = document.createTextNode(span.textContent || "");
+    span.parentNode?.replaceChild(cleanText, span);
+  });
+}
+
 export default function Overlay() {
   // --- CONEXIÓN EN TIEMPO REAL CON EL BOTÓN DEL POPUP ---
   const [isActive] = useStorage("extension_active", true)
@@ -160,11 +171,15 @@ export default function Overlay() {
   const [headlineAnalysis, setHeadlineAnalysis] = React.useState<any | null>(null)
   const [headlineText, setHeadlineText] = React.useState("")
 
-  React.useEffect(() => {
-    // Si la extensión está apagada, no hacemos nada de análisis
-    if (!isActive) return;
+React.useEffect(() => {
+    // Si la extensión se apaga, limpiamos la pantalla y olvidamos los datos
+    if (!isActive) {
+      removeHighlights();
+      setNewsAnalysis([]); 
+      return;
+    }
 
-    // Si ya hemos analizado esta página, evitamos volver a hacerlo
+    // Si está encendida y ya hay resultados, no repetimos el análisis
     if (newsAnalysis.length > 0) return;
 
     const analyzePage = async () => {
