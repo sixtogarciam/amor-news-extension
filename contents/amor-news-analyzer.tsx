@@ -1,7 +1,7 @@
 import * as React from "react"
 import { Storage } from "@plasmohq/storage"
-import { useStorage } from "@plasmohq/storage/hook" // <-- ¡El import en tiempo real!
-import { analyzeArticle } from "~lib/analysis"
+import { useStorage } from "@plasmohq/storage/hook"
+import { sendToBackground } from "@plasmohq/messaging" // <-- Nuevo import para hablar con el Background
 import { Readability } from "@mozilla/readability"
 
 // @ts-ignore
@@ -153,10 +153,7 @@ function highlightKeywords(element: HTMLElement, keywords: string[], color: stri
 }
 
 function removeHighlights() {
-  // Buscamos todas las etiquetas que hemos inyectado
   const highlights = document.querySelectorAll('span.amor-highlight');
-  
-  // Por cada una, sacamos su texto limpio y borramos la etiqueta de color
   highlights.forEach(span => {
     const cleanText = document.createTextNode(span.textContent || "");
     span.parentNode?.replaceChild(cleanText, span);
@@ -164,22 +161,19 @@ function removeHighlights() {
 }
 
 export default function Overlay() {
-  // --- CONEXIÓN EN TIEMPO REAL CON EL BOTÓN DEL POPUP ---
   const [isActive] = useStorage("extension_active", true)
 
   const [newsAnalysis, setNewsAnalysis] = React.useState<any[]>([])
   const [headlineAnalysis, setHeadlineAnalysis] = React.useState<any | null>(null)
   const [headlineText, setHeadlineText] = React.useState("")
 
-React.useEffect(() => {
-    // Si la extensión se apaga, limpiamos la pantalla y olvidamos los datos
+  React.useEffect(() => {
     if (!isActive) {
       removeHighlights();
       setNewsAnalysis([]); 
       return;
     }
 
-    // Si está encendida y ya hay resultados, no repetimos el análisis
     if (newsAnalysis.length > 0) return;
 
     const analyzePage = async () => {
@@ -216,17 +210,30 @@ React.useEffect(() => {
         return
       }
 
-      const articleCategory = detectArticleCategory();
-      const articleLanguage = detectLanguage();
-      
       const articleText = articleData.textContent?.trim() || ""
-      const result = analyzeArticle(articleText, articleCategory, articleLanguage)
-
       const detectedHeadline = articleData.title?.trim() || ""
-      if (detectedHeadline) {
-        const headlineResult = analyzeArticle(detectedHeadline, "general", articleLanguage, true)
+
+      console.log("AMOR: Enviando texto a OpenAI para analizar...");
+
+      // --- AQUÍ OCURRE LA MAGIA DE LA IA ---
+      const [articleResponse, headlineResponse] = await Promise.all([
+        sendToBackground({ name: "analyzeNews", body: { text: articleText } }),
+        detectedHeadline 
+          ? sendToBackground({ name: "analyzeNews", body: { text: detectedHeadline } })
+          : Promise.resolve({ data: null })
+      ]);
+
+      if (articleResponse.error) {
+        console.error("AMOR: Error en el análisis de IA:", articleResponse.error);
+        setNewsAnalysis([]);
+        return;
+      }
+
+      const result = articleResponse.data;
+
+      if (detectedHeadline && headlineResponse.data) {
         setHeadlineText(detectedHeadline)
-        setHeadlineAnalysis(headlineResult)
+        setHeadlineAnalysis(headlineResponse.data)
       } else {
         setHeadlineText("")
         setHeadlineAnalysis(null)
@@ -238,20 +245,17 @@ React.useEffect(() => {
 
       results.push({ element: document.body, ...result })
       
-      // ESTADÍSTICAS REALES
       analytics.articlesAnalyzed += 1;
       if (result.emotional >= 0.6) analytics.clickbaitDetected += 1;
       if (result.exaggeration >= 0.6) analytics.sensationalDetected += 1;
 
-      // Guardamos y actualizamos estado
       await storageCS.set("analytics", analytics)
       setNewsAnalysis(results)
     }
 
     analyzePage()
-  }, [isActive]) // <-- Le decimos a React que escuche los cambios de isActive
+  }, [isActive])
 
-  // Si está apagada o no hay resultados, el menú desaparece al instante
   if (!isActive || newsAnalysis.length === 0) return null
 
   const currentItem = newsAnalysis[0]
