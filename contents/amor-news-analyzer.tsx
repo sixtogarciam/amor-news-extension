@@ -1,7 +1,7 @@
 import * as React from "react"
 import { Storage } from "@plasmohq/storage"
 import { useStorage } from "@plasmohq/storage/hook"
-import { sendToBackground } from "@plasmohq/messaging" // <-- Nuevo import para hablar con el Background
+import { sendToBackground } from "@plasmohq/messaging"
 import { Readability } from "@mozilla/readability"
 
 // @ts-ignore
@@ -18,7 +18,9 @@ export const config = {
     "*://*.x.com/*",
     "*://*.facebook.com/*",
     "*://*.wikipedia.org/*",
-    "*://*.instagram.com/*"
+    "*://*.instagram.com/*",
+    "*://*.amazon.es/*",
+    "*://*.amazon.com/*"
   ],
   run_at: "document_idle"
 }
@@ -31,64 +33,40 @@ function getLevelColor(score: number) {
   return "#777"
 }
 
-function detectLanguage(): string {
-  const htmlTag = document.documentElement;
-  const lang = htmlTag.getAttribute("lang")?.toLowerCase() || "";
-  if (lang.startsWith("es")) return "es";
-  return "en"; 
-}
-
-function detectArticleCategory(): string {
-  const metaTags = document.querySelectorAll('meta');
-  let contentString = "";
-
-  metaTags.forEach(tag => {
-    const name = tag.getAttribute('name') || tag.getAttribute('property') || "";
-    const content = tag.getAttribute('content') || "";
-    if (name.includes('section') || name.includes('tag') || name.includes('keyword') || name.includes('type')) {
-      contentString += content.toLowerCase() + " ";
-    }
-  });
-
-  const url = window.location.href.toLowerCase();
-  contentString += " " + url; 
-
-  if (contentString.includes('opinion') || contentString.includes('editorial') || contentString.includes('column') || contentString.includes('tribuna')) {
-    return "opinion";
-  }
-  if (contentString.includes('crime') || contentString.includes('accident') || contentString.includes('disaster') || contentString.includes('tragedy') || contentString.includes('sucesos') || contentString.includes('asesinato')) {
-    return "tragedy";
-  }
-  if (contentString.includes('satire') || contentString.includes('humor')) {
-    return "satire";
-  }
-  return "general";
-}
-
 function isNewsArticle(): boolean {
-  const path = window.location.pathname;
+  const path = window.location.pathname.toLowerCase();
+  const hostname = window.location.hostname.toLowerCase();
 
-  if (path === '/' || path === '/index.html' || path.length < 25) {
-    return false;
+  // Descartamos portadas inmediatamente
+  if (path === '/' || path === '/index.html' || path.length < 25) return false;
+
+  // EXCEPCIÓN DE DOMINIO: Los que sabemos que rompen las reglas (OkDiario)
+  const rebelDomains = ["okdiario.com", "elespanol.com"];
+  if (rebelDomains.some(domain => hostname.includes(domain))) {
+    return true;
+  }
+
+  let isNewsJsonLd = false;
+  const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+  for (const script of scripts) {
+    try {
+      const content = script.textContent?.toLowerCase() || "";
+      // SEGURIDAD: Solo abortamos si el código interno dice literalmente "recipe" (receta de cocina real) o "product"
+      if (content.includes('"@type":"recipe"') || content.includes('"@type": "recipe"')) return false;
+      if (content.includes('"@type":"product"') || content.includes('"@type": "product"')) return false;
+      
+      if (content.includes('"newsarticle"') || content.includes('"reportagenewsarticle"') || content.includes('"article"')) {
+        isNewsJsonLd = true;
+      }
+    } catch (e) {}
   }
 
   const isOgArticle = document.querySelector('meta[property="og:type"]')?.getAttribute("content")?.toLowerCase() === "article";
   const hasPublishedTime = !!document.querySelector('meta[property="article:published_time"]');
   const hasAuthor = !!document.querySelector('meta[name="author"]') || !!document.querySelector('meta[property="article:author"]');
 
-  if (isOgArticle || hasPublishedTime || hasAuthor) {
+  if (isOgArticle || hasPublishedTime || hasAuthor || isNewsJsonLd) {
     return true;
-  }
-
-  const scripts = document.querySelectorAll('script[type="application/ld+json"]');
-  for (const script of scripts) {
-    try {
-      const data = JSON.parse(script.textContent || "{}");
-      const types = JSON.stringify(data).toLowerCase();
-      if (types.includes('"newsarticle"') || types.includes('"reportagenewsarticle"') || types.includes('"article"')) {
-        return true;
-      }
-    } catch (e) {}
   }
 
   return false;
@@ -166,15 +144,19 @@ export default function Overlay() {
   const [newsAnalysis, setNewsAnalysis] = React.useState<any[]>([])
   const [headlineAnalysis, setHeadlineAnalysis] = React.useState<any | null>(null)
   const [headlineText, setHeadlineText] = React.useState("")
+  const [isLoading, setIsLoading] = React.useState(false)
 
   React.useEffect(() => {
+    let isCancelled = false;
+
     if (!isActive) {
       removeHighlights();
       setNewsAnalysis([]); 
+      setIsLoading(false);
       return;
     }
 
-    if (newsAnalysis.length > 0) return;
+    if (newsAnalysis.length > 0 || isLoading) return;
 
     const analyzePage = async () => {
       let attempts = 0;
@@ -189,33 +171,52 @@ export default function Overlay() {
         attempts++;
       }
 
-      if (!validArticleFound) {
-        console.log("AMOR: Esto no parece una noticia o es un buscador. Menú desactivado.");
-        return; 
-      }
+      if (!validArticleFound || isCancelled) return; 
 
       const analytics = (await storageCS.get<any>("analytics")) || { articlesAnalyzed: 0, clickbaitDetected: 0, sensationalDetected: 0 }
       const results: any[] = []
 
       let articleData = null;
+      let articleText = "";
+      let detectedHeadline = "";
+
+      // --- INTENTO 1: Readability (Limpio y estructurado) ---
       try {
         const documentClone = document.cloneNode(true) as Document;
+        const junk = documentClone.querySelectorAll('script, style, noscript, iframe');
+        junk.forEach(el => el.remove());
+        
         articleData = new Readability(documentClone).parse();
       } catch (e) {
-        console.error("AMOR: Error al ejecutar Readability", e);
+        console.error("AMOR: Error crítico al ejecutar Readability", e);
       }
 
-      if (!articleData) {
-        setNewsAnalysis([])
-        return
+      // --- PLAN B: Extracción Manual Segura ---
+      if (articleData && articleData.textContent) {
+        articleText = articleData.textContent.trim();
+        detectedHeadline = articleData.title?.trim() || "";
+      } else {
+        console.log("AMOR: Activando PLAN B...");
+        detectedHeadline = document.querySelector('h1')?.textContent?.trim() || document.title;
+        
+        // SEGURIDAD: Solo cogemos párrafos largos (más de 100 caracteres) para evitar menús y cookies
+        const paragraphs = Array.from(document.querySelectorAll('article p, .article-content p, p'))
+                                .map(p => p.textContent?.trim() || "")
+                                .filter(text => text.length > 100); 
+                                
+        // Solo unimos los primeros 15 párrafos largos para no saturar a la IA si la página es infinita
+        articleText = paragraphs.slice(0, 15).join("\n\n");
       }
 
-      const articleText = articleData.textContent?.trim() || ""
-      const detectedHeadline = articleData.title?.trim() || ""
+      if (articleText.length < 150) {
+         console.log("AMOR: El texto extraído es demasiado corto para ser analizado.");
+         setNewsAnalysis([]);
+         return;
+      }
 
-      console.log("AMOR: Enviando texto a OpenAI para analizar...");
+      setIsLoading(true);
+      console.log("AMOR: Enviando texto a OpenAI...");
 
-      // --- AQUÍ OCURRE LA MAGIA DE LA IA ---
       const [articleResponse, headlineResponse] = await Promise.all([
         sendToBackground({ name: "analyzeNews", body: { text: articleText } }),
         detectedHeadline 
@@ -223,8 +224,15 @@ export default function Overlay() {
           : Promise.resolve({ data: null })
       ]);
 
+      if (isCancelled) {
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(false);
+
       if (articleResponse.error) {
-        console.error("AMOR: Error en el análisis de IA:", articleResponse.error);
+        console.error("AMOR: Error de OpenAI:", articleResponse.error);
         setNewsAnalysis([]);
         return;
       }
@@ -254,9 +262,13 @@ export default function Overlay() {
     }
 
     analyzePage()
+
+    return () => {
+      isCancelled = true;
+    }
   }, [isActive])
 
-  if (!isActive || newsAnalysis.length === 0) return null
+  if (!isActive || (newsAnalysis.length === 0 && !isLoading)) return null
 
   const currentItem = newsAnalysis[0]
 
@@ -288,68 +300,78 @@ export default function Overlay() {
 
       <div style={{ padding: 16, overflowY: "auto" }}>
         
-        <div style={{ marginBottom: 20, display: "flex", gap: 8 }}>
-          <div style={{ flex: 1, background: "#f8f9fa", padding: 12, borderRadius: 8, borderLeft: `3px solid ${GSI}` }}>
-            <div style={{ fontSize: 11, color: "#666", textTransform: "uppercase", marginBottom: 4 }}>Dominant Signal</div>
-            <div style={{ fontSize: 14, fontWeight: "bold", color: "#222" }}>{dominantFraming && dominantFraming.value > 0 ? dominantFraming.type : "Neutral"}</div>
+        {isLoading ? (
+          <div style={{ textAlign: "center", padding: "40px 20px" }}>
+            <div style={{ fontSize: "3rem", marginBottom: 16 }}>🤖</div>
+            <h3 style={{ margin: 0, color: "#333", fontSize: 16 }}>Analizando sesgos con IA...</h3>
+            <p style={{ margin: "8px 0 0 0", color: "#777", fontSize: 13 }}>Leyendo el artículo y calculando encuadres. Esto puede tardar unos segundos.</p>
           </div>
-          <div style={{ flex: 1, background: "#f8f9fa", padding: 12, borderRadius: 8, borderLeft: "3px solid #ccc" }}>
-            <div style={{ fontSize: 11, color: "#666", textTransform: "uppercase", marginBottom: 4 }}>Secondary Signal</div>
-            <div style={{ fontSize: 14, fontWeight: "bold", color: "#222" }}>{secondaryFraming && secondaryFraming.value > 0 ? secondaryFraming.type : "None"}</div>
-          </div>
-        </div>
-
-        {headlineText && headlineAnalysis && (
-          <div style={{ background: "#f8f9fa", borderRadius: 8, padding: 12, border: "1px solid #eee", marginBottom: 24 }}>
-            <h4 style={{ margin: "0 0 8px 0", fontSize: 12, color: "#555", textTransform: "uppercase" }}>Headline Analysis</h4>
-            <div style={{ fontSize: 12, fontStyle: "italic", color: "#444", marginBottom: 12, lineHeight: 1.4 }}>"{headlineText}"</div>
-            
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 12px" }}>
-              <div style={{ fontSize: 11 }}>
-                <span style={{ color: "#777" }}>Moral:</span> <strong style={{ color: getLevelColor(headlineAnalysis.moralLanguage) }}>{(headlineAnalysis.moralLanguage * 100).toFixed(0)}%</strong>
+        ) : (
+          <>
+            <div style={{ marginBottom: 20, display: "flex", gap: 8 }}>
+              <div style={{ flex: 1, background: "#f8f9fa", padding: 12, borderRadius: 8, borderLeft: `3px solid ${GSI}` }}>
+                <div style={{ fontSize: 11, color: "#666", textTransform: "uppercase", marginBottom: 4 }}>Dominant Signal</div>
+                <div style={{ fontSize: 14, fontWeight: "bold", color: "#222" }}>{dominantFraming && dominantFraming.value > 0 ? dominantFraming.type : "Neutral"}</div>
               </div>
-              <div style={{ fontSize: 11 }}>
-                <span style={{ color: "#777" }}>Manipulative:</span> <strong style={{ color: getLevelColor(headlineAnalysis.manipulativeScore) }}>{(headlineAnalysis.manipulativeScore * 100).toFixed(0)}%</strong>
-              </div>
-              <div style={{ fontSize: 11 }}>
-                <span style={{ color: "#777" }}>Emotional:</span> <strong style={{ color: getLevelColor(headlineAnalysis.emotional) }}>{(headlineAnalysis.emotional * 100).toFixed(0)}%</strong>
-              </div>
-              <div style={{ fontSize: 11 }}>
-                <span style={{ color: "#777" }}>Exaggeration:</span> <strong style={{ color: getLevelColor(headlineAnalysis.exaggeration) }}>{(headlineAnalysis.exaggeration * 100).toFixed(0)}%</strong>
+              <div style={{ flex: 1, background: "#f8f9fa", padding: 12, borderRadius: 8, borderLeft: "3px solid #ccc" }}>
+                <div style={{ fontSize: 11, color: "#666", textTransform: "uppercase", marginBottom: 4 }}>Secondary Signal</div>
+                <div style={{ fontSize: 14, fontWeight: "bold", color: "#222" }}>{secondaryFraming && secondaryFraming.value > 0 ? secondaryFraming.type : "None"}</div>
               </div>
             </div>
-          </div>
+
+            {headlineText && headlineAnalysis && (
+              <div style={{ background: "#f8f9fa", borderRadius: 8, padding: 12, border: "1px solid #eee", marginBottom: 24 }}>
+                <h4 style={{ margin: "0 0 8px 0", fontSize: 12, color: "#555", textTransform: "uppercase" }}>Headline Analysis</h4>
+                <div style={{ fontSize: 12, fontStyle: "italic", color: "#444", marginBottom: 12, lineHeight: 1.4 }}>"{headlineText}"</div>
+                
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 12px" }}>
+                  <div style={{ fontSize: 11 }}>
+                    <span style={{ color: "#777" }}>Moral:</span> <strong style={{ color: getLevelColor(headlineAnalysis.moralLanguage) }}>{(headlineAnalysis.moralLanguage * 100).toFixed(0)}%</strong>
+                  </div>
+                  <div style={{ fontSize: 11 }}>
+                    <span style={{ color: "#777" }}>Manipulative:</span> <strong style={{ color: getLevelColor(headlineAnalysis.manipulativeScore) }}>{(headlineAnalysis.manipulativeScore * 100).toFixed(0)}%</strong>
+                  </div>
+                  <div style={{ fontSize: 11 }}>
+                    <span style={{ color: "#777" }}>Emotional:</span> <strong style={{ color: getLevelColor(headlineAnalysis.emotional) }}>{(headlineAnalysis.emotional * 100).toFixed(0)}%</strong>
+                  </div>
+                  <div style={{ fontSize: 11 }}>
+                    <span style={{ color: "#777" }}>Exaggeration:</span> <strong style={{ color: getLevelColor(headlineAnalysis.exaggeration) }}>{(headlineAnalysis.exaggeration * 100).toFixed(0)}%</strong>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginBottom: 24 }}>
+              <h4 style={{ margin: "0 0 12px 0", fontSize: 13, color: "#333", borderBottom: "1px solid #eee", paddingBottom: 6 }}>Article Analysis</h4>
+              <ProgressBar label="Moral Language" score={currentItem?.moralLanguage ?? 0} color="#5cb85c" />
+              <ProgressBar label="Loaded/Persuasive Language" score={currentItem?.manipulativeScore ?? 0} color="#d9534f" />
+              <ProgressBar label="Emotional Intensity" score={currentItem?.emotional ?? 0} color="#f0ad4e" />
+              <ProgressBar label="Exaggeration Level" score={currentItem?.exaggeration ?? 0} color="#5bc0de" />
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ margin: "0 0 10px 0", fontSize: 13, color: "#333", borderBottom: "1px solid #eee", paddingBottom: 6 }}>Detected Keywords</h4>
+              
+              <div style={{ marginBottom: 8 }}>
+                {currentItem?.moralKeywords?.length > 0 ? (
+                  [...new Set(currentItem.moralKeywords)].map((kw: string, i: number) => <KeywordChip key={`m-${i}`} word={kw} bgColor="#dff0d8" />)
+                ) : <span style={{ fontSize: 11, color: "#999" }}>No moral lexicon detected.</span>}
+              </div>
+              
+              <div style={{ marginBottom: 8 }}>
+                {currentItem?.manipulativeKeywords?.length > 0 && (
+                  [...new Set(currentItem.manipulativeKeywords)].map((kw: string, i: number) => <KeywordChip key={`man-${i}`} word={kw} bgColor="#f2dede" />)
+                )}
+              </div>
+              
+              <div>
+                {currentItem?.emotionalKeywords?.length > 0 && (
+                  [...new Set(currentItem.emotionalKeywords)].map((kw: string, i: number) => <KeywordChip key={`e-${i}`} word={kw} bgColor="#fcf8e3" />)
+                )}
+              </div>
+            </div>
+          </>
         )}
-
-        <div style={{ marginBottom: 24 }}>
-          <h4 style={{ margin: "0 0 12px 0", fontSize: 13, color: "#333", borderBottom: "1px solid #eee", paddingBottom: 6 }}>Article Analysis</h4>
-          <ProgressBar label="Moral Language" score={currentItem?.moralLanguage ?? 0} color="#5cb85c" />
-          <ProgressBar label="Loaded/Persuasive Language" score={currentItem?.manipulativeScore ?? 0} color="#d9534f" />
-          <ProgressBar label="Emotional Intensity" score={currentItem?.emotional ?? 0} color="#f0ad4e" />
-          <ProgressBar label="Exaggeration Level" score={currentItem?.exaggeration ?? 0} color="#5bc0de" />
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <h4 style={{ margin: "0 0 10px 0", fontSize: 13, color: "#333", borderBottom: "1px solid #eee", paddingBottom: 6 }}>Detected Keywords</h4>
-          
-          <div style={{ marginBottom: 8 }}>
-            {currentItem?.moralKeywords?.length > 0 ? (
-              [...new Set(currentItem.moralKeywords)].map((kw: string, i: number) => <KeywordChip key={`m-${i}`} word={kw} bgColor="#dff0d8" />)
-            ) : <span style={{ fontSize: 11, color: "#999" }}>No moral lexicon detected.</span>}
-          </div>
-          
-          <div style={{ marginBottom: 8 }}>
-            {currentItem?.manipulativeKeywords?.length > 0 && (
-              [...new Set(currentItem.manipulativeKeywords)].map((kw: string, i: number) => <KeywordChip key={`man-${i}`} word={kw} bgColor="#f2dede" />)
-            )}
-          </div>
-          
-          <div>
-            {currentItem?.emotionalKeywords?.length > 0 && (
-              [...new Set(currentItem.emotionalKeywords)].map((kw: string, i: number) => <KeywordChip key={`e-${i}`} word={kw} bgColor="#fcf8e3" />)
-            )}
-          </div>
-        </div>
 
       </div>
     </div>

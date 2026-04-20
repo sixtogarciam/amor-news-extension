@@ -1,5 +1,7 @@
 import type { PlasmoMessaging } from "@plasmohq/messaging"
 
+declare const process: any;
+
 const handler: PlasmoMessaging.MessageHandler = async (req, res) => {
   const { text } = req.body;
 
