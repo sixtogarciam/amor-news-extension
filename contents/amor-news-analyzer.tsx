@@ -12,7 +12,7 @@ export const config = {
   exclude_matches: [
     "*://*.google.com/*",
     "*://*.google.es/*",
-    "*://*.bing.com/*", 
+    "*://*.bing.com/*",
     "*://*.youtube.com/*",
     "*://*.twitter.com/*",
     "*://*.x.com/*",
@@ -28,9 +28,9 @@ const storageCS = new Storage()
 const GSI = "#00a9e0"
 
 function getLevelColor(score: number) {
-  if (score >= 0.6) return "#d9534f"
-  if (score >= 0.3) return "#f0ad4e"
-  return "#777"
+  if (score >= 0.6) return "#d93832" // Rojo más limpio y legible
+  if (score >= 0.3) return "#e68a00" // Naranja más vibrante
+  return "#3b6a8c" // Azul acero para valores bajos en lugar de gris apagado
 }
 
 function isNewsArticle(): boolean {
@@ -151,7 +151,7 @@ export default function Overlay() {
 
     if (!isActive) {
       removeHighlights();
-      setNewsAnalysis([]); 
+      setNewsAnalysis([]);
       setIsLoading(false);
       return;
     }
@@ -165,13 +165,13 @@ export default function Overlay() {
       while (attempts < 6) {
         if (isNewsArticle()) {
           validArticleFound = true;
-          break; 
+          break;
         }
         await new Promise(resolve => setTimeout(resolve, 500));
         attempts++;
       }
 
-      if (!validArticleFound || isCancelled) return; 
+      if (!validArticleFound || isCancelled) return;
 
       const analytics = (await storageCS.get<any>("analytics")) || { articlesAnalyzed: 0, clickbaitDetected: 0, sensationalDetected: 0 }
       const results: any[] = []
@@ -202,7 +202,7 @@ export default function Overlay() {
         // SEGURIDAD: Solo cogemos párrafos largos (más de 100 caracteres) para evitar menús y cookies
         const paragraphs = Array.from(document.querySelectorAll('article p, .article-content p, p'))
                                 .map(p => p.textContent?.trim() || "")
-                                .filter(text => text.length > 100); 
+                                .filter(text => text.length > 100);
                                 
         // Solo unimos los primeros 15 párrafos largos para no saturar a la IA si la página es infinita
         articleText = paragraphs.slice(0, 15).join("\n\n");
@@ -219,7 +219,7 @@ export default function Overlay() {
 
       const [articleResponse, headlineResponse] = await Promise.all([
         sendToBackground({ name: "analyzeNews", body: { text: articleText } }),
-        detectedHeadline 
+        detectedHeadline
           ? sendToBackground({ name: "analyzeNews", body: { text: detectedHeadline } })
           : Promise.resolve({ data: null })
       ]);
@@ -309,33 +309,33 @@ export default function Overlay() {
         ) : (
           <>
             <div style={{ marginBottom: 20, display: "flex", gap: 8 }}>
-              <div style={{ flex: 1, background: "#f8f9fa", padding: 12, borderRadius: 8, borderLeft: `3px solid ${GSI}` }}>
+              <div style={{ flex: 1, background: "#e1f5fe", padding: 12, borderRadius: 8, borderLeft: `3px solid ${GSI}` }}>
                 <div style={{ fontSize: 11, color: "#666", textTransform: "uppercase", marginBottom: 4 }}>Dominant Signal</div>
                 <div style={{ fontSize: 14, fontWeight: "bold", color: "#222" }}>{dominantFraming && dominantFraming.value > 0 ? dominantFraming.type : "Neutral"}</div>
               </div>
-              <div style={{ flex: 1, background: "#f8f9fa", padding: 12, borderRadius: 8, borderLeft: "3px solid #ccc" }}>
+              <div style={{ flex: 1, background: "#e1f5fe", padding: 12, borderRadius: 8, borderLeft: `3px solid ${GSI}` }}>
                 <div style={{ fontSize: 11, color: "#666", textTransform: "uppercase", marginBottom: 4 }}>Secondary Signal</div>
                 <div style={{ fontSize: 14, fontWeight: "bold", color: "#222" }}>{secondaryFraming && secondaryFraming.value > 0 ? secondaryFraming.type : "None"}</div>
               </div>
             </div>
 
             {headlineText && headlineAnalysis && (
-              <div style={{ background: "#f8f9fa", borderRadius: 8, padding: 12, border: "1px solid #eee", marginBottom: 24 }}>
-                <h4 style={{ margin: "0 0 8px 0", fontSize: 12, color: "#555", textTransform: "uppercase" }}>Headline Analysis</h4>
-                <div style={{ fontSize: 12, fontStyle: "italic", color: "#444", marginBottom: 12, lineHeight: 1.4 }}>"{headlineText}"</div>
+              <div style={{ background: "#f0f8ff", borderRadius: 8, padding: 12, border: `1px solid ${GSI}`, marginBottom: 24 }}>
+                <h4 style={{ margin: "0 0 8px 0", fontSize: 12, color: "#006699", textTransform: "uppercase" }}>Headline Analysis</h4>
+                <div style={{ fontSize: 12, fontStyle: "italic", color: "#1a365d", marginBottom: 12, lineHeight: 1.4 }}>"{headlineText}"</div>
                 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 12px" }}>
                   <div style={{ fontSize: 11 }}>
-                    <span style={{ color: "#777" }}>Moral:</span> <strong style={{ color: getLevelColor(headlineAnalysis.moralLanguage) }}>{(headlineAnalysis.moralLanguage * 100).toFixed(0)}%</strong>
+                    <span style={{ color: "#5a7a94" }}>Moral:</span> <strong style={{ color: getLevelColor(headlineAnalysis.moralLanguage) }}>{(headlineAnalysis.moralLanguage * 100).toFixed(0)}%</strong>
                   </div>
                   <div style={{ fontSize: 11 }}>
-                    <span style={{ color: "#777" }}>Manipulative:</span> <strong style={{ color: getLevelColor(headlineAnalysis.manipulativeScore) }}>{(headlineAnalysis.manipulativeScore * 100).toFixed(0)}%</strong>
+                    <span style={{ color: "#5a7a94" }}>Manipulative:</span> <strong style={{ color: getLevelColor(headlineAnalysis.manipulativeScore) }}>{(headlineAnalysis.manipulativeScore * 100).toFixed(0)}%</strong>
                   </div>
                   <div style={{ fontSize: 11 }}>
-                    <span style={{ color: "#777" }}>Emotional:</span> <strong style={{ color: getLevelColor(headlineAnalysis.emotional) }}>{(headlineAnalysis.emotional * 100).toFixed(0)}%</strong>
+                    <span style={{ color: "#5a7a94" }}>Emotional:</span> <strong style={{ color: getLevelColor(headlineAnalysis.emotional) }}>{(headlineAnalysis.emotional * 100).toFixed(0)}%</strong>
                   </div>
                   <div style={{ fontSize: 11 }}>
-                    <span style={{ color: "#777" }}>Exaggeration:</span> <strong style={{ color: getLevelColor(headlineAnalysis.exaggeration) }}>{(headlineAnalysis.exaggeration * 100).toFixed(0)}%</strong>
+                    <span style={{ color: "#5a7a94" }}>Exaggeration:</span> <strong style={{ color: getLevelColor(headlineAnalysis.exaggeration) }}>{(headlineAnalysis.exaggeration * 100).toFixed(0)}%</strong>
                   </div>
                 </div>
               </div>
