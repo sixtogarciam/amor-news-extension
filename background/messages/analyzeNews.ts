@@ -1,12 +1,23 @@
 import type { PlasmoMessaging } from "@plasmohq/messaging"
+import { Storage } from "@plasmohq/storage"
 
-declare const process: any;
+// Creamos la instancia para leer el almacenamiento local
+const storage = new Storage()
 
 const handler: PlasmoMessaging.MessageHandler = async (req, res) => {
   const { text } = req.body;
 
   if (!text) {
     res.send({ error: "No text provided" });
+    return;
+  }
+
+  // 1. Recuperamos la clave guardada por el usuario en el popup de Settings
+  const userApiKey = await storage.get("openai_api_key");
+
+  // 2. Si el usuario no ha guardado ninguna clave, cortamos aquí y mandamos el error
+  if (!userApiKey) {
+    res.send({ error: "No se ha configurado la API Key de OpenAI. Por favor, añádela en el menú de configuración (engranaje)." });
     return;
   }
 
@@ -28,12 +39,12 @@ Analiza el texto cuidadosamente y devuelve ÚNICAMENTE un objeto JSON válido co
 
   try {
     // Usamos el modelo gpt-3.5-turbo porque es rapidísimo y muy barato, perfecto para analizar textos.
-    // Plasmo inyecta automáticamente la variable de entorno desde tu archivo .env.local
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.PLASMO_PUBLIC_OPENAI_API_KEY}`
+        // 3. Sustituimos la variable de entorno local por la clave del usuario
+        "Authorization": `Bearer ${userApiKey}`
       },
       body: JSON.stringify({
         model: "gpt-3.5-turbo",
