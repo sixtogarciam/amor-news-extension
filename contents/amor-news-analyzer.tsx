@@ -3,6 +3,7 @@ import { Storage } from "@plasmohq/storage"
 import { useStorage } from "@plasmohq/storage/hook"
 import { sendToBackground } from "@plasmohq/messaging"
 import { Readability } from "@mozilla/readability"
+import { analyzeArticle } from "~lib/analysis"
 
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale, RadialLinearScale } from "chart.js"
 import { Doughnut, Bar, PolarArea } from "react-chartjs-2"
@@ -26,9 +27,11 @@ const storageCS = new Storage()
 const GSI = "#00a9e0"
 
 function getLevelColor(score: number) {
-  if (score >= 0.6) return "#d93832"
-  if (score >= 0.3) return "#e68a00"
-  return "#3b6a8c"
+  if (score >= 0.8) return "#d93832" // Rojo (80% - 100%) -> Nivel crítico
+  if (score >= 0.6) return "#e68a00" // Naranja (60% - 80%) -> Nivel alto
+  if (score >= 0.4) return "#f0ad4e" // Amarillo/Dorado (40% - 60%) -> Nivel medio
+  if (score >= 0.2) return "#5cb85c" // Verde (20% - 40%) -> Nivel bajo
+  return "#3b6a8c"                   // Azul acero (0% - 20%) -> Nivel muy bajo / Neutro
 }
 
 function isNewsArticle(): boolean {
@@ -205,23 +208,44 @@ export default function Overlay() {
       }
       setIsLoading(false);
 
-      if (articleResponse.error) {
-        setNewsAnalysis([]);
-        return;
+      // --- LÓGICA DE FALLBACK (Motor Local de Emergencia) ---
+      let result;
+      let headlineResult = null;
+
+      // Detectamos el idioma de la página web automáticamente (por defecto inglés si no es español)
+      const pageLang = document.documentElement.lang.toLowerCase().startsWith("es") ? "es" : "en";
+
+      // 1. Gestionar el artículo
+      if (articleResponse.error || !articleResponse.data) {
+        console.warn("AMOR: Fallo en OpenAI. Activando diccionarios de emergencia para el artículo...");
+        result = analyzeArticle(articleText, "general", pageLang, false); 
+      } else {
+        result = articleResponse.data; // Todo dinámico gracias a la IA
       }
 
-      const result = articleResponse.data;
-      if (detectedHeadline && headlineResponse.data) {
+      // 2. Gestionar el titular
+      if (detectedHeadline) {
+        if (headlineResponse.error || !headlineResponse.data) {
+          console.warn("AMOR: Fallo en OpenAI. Activando diccionarios de emergencia para el titular...");
+          headlineResult = analyzeArticle(detectedHeadline, "general", pageLang, true);
+        } else {
+          headlineResult = headlineResponse.data;
+        }
+      }
+
+      if (headlineResult) {
         setHeadlineText(detectedHeadline)
-        setHeadlineAnalysis(headlineResponse.data)
+        setHeadlineAnalysis(headlineResult)
       } else {
         setHeadlineText("")
         setHeadlineAnalysis(null)
       }
 
+      // El subrayado ahora usa lo que haya dicho OpenAI (o los diccionarios si OpenAI falló)
       highlightKeywords(document.body, result.moralKeywords || [], "#b7f5b7")
       highlightKeywords(document.body, result.manipulativeKeywords || [], "#ffb3b3")
       highlightKeywords(document.body, result.emotionalKeywords || [], "#ffd699")
+      
       results.push({ element: document.body, ...result })
       
       analytics.articlesAnalyzed += 1;
@@ -325,6 +349,26 @@ export default function Overlay() {
     }
   }
 
+  const polarOptions = {
+    ...commonOptions,
+    scales: {
+      r: {
+        min: 0,
+        max: 100,
+        ticks: { 
+          display: false, // Seguimos ocultando los números
+          stepSize: 20    // Creamos un anillo de referencia cada 20% (20, 40, 60, 80, 100)
+        },
+        grid: { 
+          display: true,  // Recuperamos las líneas de los anillos
+          color: 'rgba(0, 0, 0, 0.08)', // Gris muy sutil para no ensuciar
+          circular: true
+        },
+        angleLines: { display: false } // Ocultamos las líneas radiales rectas
+      }
+    }
+  }
+
   // Comprueba si el usuario lo apagó todo
   const noAnalysisSelected = !showMoral && !showManipulative && !showEmotional && !showExaggeration;
 
@@ -402,7 +446,7 @@ export default function Overlay() {
                 // Diseño de barras de progreso original (CLASSIC)
                 <div>
                    {showMoral && <ProgressBar label="Moral Language" score={currentItem?.moralLanguage ?? 0} color="#5cb85c" />}
-                   {showManipulative && <ProgressBar label="Loaded/Persuasive Language" score={currentItem?.manipulativeScore ?? 0} color="#d9534f" />}
+                   {showManipulative && <ProgressBar label="Manipulative Language" score={currentItem?.manipulativeScore ?? 0} color="#d9534f" />}
                    {showEmotional && <ProgressBar label="Emotional Intensity" score={currentItem?.emotional ?? 0} color="#f0ad4e" />}
                    {showExaggeration && <ProgressBar label="Exaggeration Level" score={currentItem?.exaggeration ?? 0} color="#5bc0de" />}
                 </div>
@@ -411,7 +455,7 @@ export default function Overlay() {
                 <div style={{ height: "180px", width: "100%", display: "flex", justifyContent: "center", marginBottom: "8px" }}>
                   {chartType === 'doughnut' && <Doughnut data={chartData} options={commonOptions as any} />}
                   {chartType === 'bar' && <Bar data={chartData} options={barOptions as any} />}
-                  {chartType === 'polarArea' && <PolarArea data={chartData} options={commonOptions as any} />}
+                  {chartType === 'polarArea' && <PolarArea data={chartData} options={polarOptions as any} />}
                 </div>
               )}
             </div>

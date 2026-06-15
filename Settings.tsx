@@ -80,7 +80,7 @@ export function SettingsView() {
           </label>
           <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "14px", color: "#4b5563" }}>
             <input type="checkbox" checked={showManipulative} onChange={(e) => setShowManipulative(e.target.checked)} style={{ width: "16px", height: "16px", accentColor: "#00a9e0", cursor: "pointer" }} />
-            Loaded / Persuasive Language
+            Manipulative Language
           </label>
           <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "14px", color: "#4b5563" }}>
             <input type="checkbox" checked={showEmotional} onChange={(e) => setShowEmotional(e.target.checked)} style={{ width: "16px", height: "16px", accentColor: "#00a9e0", cursor: "pointer" }} />
