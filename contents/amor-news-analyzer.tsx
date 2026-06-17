@@ -180,7 +180,8 @@ export default function Overlay() {
 
       if (articleData && articleData.textContent) {
         articleText = articleData.textContent.trim();
-        detectedHeadline = articleData.title?.trim() || "";
+        // Priorizamos el H1 real que ve el usuario en la pantalla
+        detectedHeadline = document.querySelector('h1')?.textContent?.trim() || articleData.title?.trim() || "";
       } else {
         detectedHeadline = document.querySelector('h1')?.textContent?.trim() || document.title;
         const paragraphs = Array.from(document.querySelectorAll('article p, .article-content p, p'))
