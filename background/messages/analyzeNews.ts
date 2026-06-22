@@ -5,7 +5,8 @@ import { Storage } from "@plasmohq/storage"
 const storage = new Storage()
 
 const handler: PlasmoMessaging.MessageHandler = async (req, res) => {
-  const { text } = req.body;
+  // AÑADIDO: Recuperamos el texto y el tweak (si lo hay)
+  const { text, tweak } = req.body;
 
   if (!text) {
     res.send({ error: "No text provided" });
@@ -21,11 +22,18 @@ const handler: PlasmoMessaging.MessageHandler = async (req, res) => {
     return;
   }
 
-  // Aquí está nuestro Prompt Maestro incrustado en el sistema
-  const systemPrompt = `Actúa como un analista de medios experto, lingüista y detector de sesgos cognitivos. 
-Tu tarea es analizar el siguiente artículo de noticias y evaluar su nivel de encuadre moral, intensidad emocional, exageración y lenguaje manipulativo.
+  // 3. CONSTRUIMOS EL PROMPT MAESTRO (Tu código original)
+  let systemPrompt = `Actúa como un analista de medios experto, lingüista y detector de sesgos cognitivos. 
+Tu tarea es analizar el siguiente artículo de noticias y evaluar su nivel de encuadre moral, intensidad emocional, exageración y lenguaje manipulativo.`;
 
-Analiza el texto cuidadosamente y devuelve ÚNICAMENTE un objeto JSON válido con la siguiente estructura exacta. No incluyas texto explicativo antes ni después, ni bloques de código markdown, solo el JSON puro:
+// AÑADIDO: Filtro de exclusión de alta prioridad
+  if (tweak && tweak.trim().length > 0) {
+    systemPrompt += `\n\nREGLA DE FILTRADO Y EXCLUSIÓN DEL USUARIO: "${tweak.trim()}"
+⚠️ INSTRUCCIÓN CRÍTICA: La regla anterior es un filtro absoluto. Antes de extraer CUALQUIER palabra para tus arrays (moralKeywords, manipulativeKeywords, emotionalKeywords), pregúntate si esa palabra cumple con la regla del usuario. Si el texto contiene palabras con una fortísima carga emocional, moral o bélica (ej. 'genocidio', 'héroes', 'masacre', 'guerra') pero NO tienen relación con la regla pedida por el usuario, ESTÁ ESTRICTAMENTE PROHIBIDO INCLUIRLAS. Si el artículo no encaja en la regla, ten el valor de devolver los arrays completamente vacíos [] y las métricas a 0.0.`;
+  }
+
+  // 4. Cerramos con tu orden estricta original de formato JSON
+  systemPrompt += `\n\nAnaliza el texto cuidadosamente y devuelve ÚNICAMENTE un objeto JSON válido con la siguiente estructura exacta. No incluyas texto explicativo antes ni después, ni bloques de código markdown, solo el JSON puro:
 
 {
   "emotional": [Número decimal entre 0.0 y 1.0 que indique la intensidad emocional],
@@ -43,16 +51,16 @@ Analiza el texto cuidadosamente y devuelve ÚNICAMENTE un objeto JSON válido co
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // 3. Sustituimos la variable de entorno local por la clave del usuario
+        // Sustituimos la variable de entorno local por la clave del usuario
         "Authorization": `Bearer ${userApiKey}`
       },
       body: JSON.stringify({
         model: "gpt-3.5-turbo",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `TEXTO A ANALIZAR:\n${text}` }
+          { role: "user", content: `TEXTO A ANALIZAR:\n${text}` } // Exactamente tu formato original
         ],
-        temperature: 0.2 // Temperatura baja para que el análisis sea objetivo y no se ponga creativo
+        temperature: 0.2 // VUELVE TU TEMPERATURA 0.2 ORIGINAL
       })
     });
 

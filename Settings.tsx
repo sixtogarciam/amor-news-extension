@@ -17,6 +17,9 @@ export function SettingsView() {
   const [showEmotional, setShowEmotional] = useStorage("show_emotional", true)
   const [showExaggeration, setShowExaggeration] = useStorage("show_exaggeration", true)
 
+  const [customPromptTweak, setCustomPromptTweak] = useStorage("custom_prompt_tweak", "")
+  const [reanalyzeTrigger, setReanalyzeTrigger] = useStorage("reanalyze_trigger", 0)
+
   React.useEffect(() => {
     storage.get("openai_api_key").then((val: string) => {
       if (val) setApiKey(val)
@@ -60,6 +63,41 @@ export function SettingsView() {
               transition: "background-color 0.2s ease"
             }}>
             {isSaving ? "✓ Key Saved" : "Save API Key"}
+          </button>
+        </div>
+      </div>
+
+      {/* SECCIÓN 1.5: AJUSTE DE PROMPT (TWEAK) */}
+      <div>
+        <h3 style={{ margin: "0 0 8px 4px", fontSize: "15px", color: "#1f2937", fontWeight: "bold" }}>
+          Analysis Tweak (Optional)
+        </h3>
+        <div style={{
+          background: "white", borderRadius: "12px", padding: "16px",
+          boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+          border: "1px solid #f3f4f6", display: "flex", flexDirection: "column", gap: "8px"
+        }}>
+          <textarea
+            value={customPromptTweak}
+            onChange={(e) => setCustomPromptTweak(e.target.value)}
+            placeholder="e.g., Focus specifically on political bias or economic issues..."
+            maxLength={500}
+            style={{ 
+              padding: "12px", borderRadius: "8px", border: "1px solid #d1d5db", 
+              fontSize: "14px", outline: "none", fontFamily: "inherit", resize: "none", height: "80px"
+            }}
+          />
+          <span style={{ fontSize: "11px", color: "#6b7280" }}>
+            Add a slight nuance to the analysis without altering the core functionality.
+          </span>
+          <button
+            onClick={() => setReanalyzeTrigger(Date.now())}
+            style={{
+              marginTop: "8px", backgroundColor: "#00a9e0", color: "white", border: "none", 
+              borderRadius: "8px", padding: "10px", fontSize: "14px", fontWeight: "bold", cursor: "pointer", 
+              transition: "background-color 0.2s ease"
+            }}>
+            Apply & Re-analyze
           </button>
         </div>
       </div>

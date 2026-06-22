@@ -134,7 +134,10 @@ export default function Overlay() {
   const [showManipulative] = useStorage("show_manipulative", true)
   const [showEmotional] = useStorage("show_emotional", true)
   const [showExaggeration] = useStorage("show_exaggeration", true)
-  
+
+  const [customPromptTweak] = useStorage("custom_prompt_tweak", "") 
+  const [reanalyzeTrigger] = useStorage("reanalyze_trigger", 0) 
+
   const [newsAnalysis, setNewsAnalysis] = React.useState<any[]>([])
   const [headlineAnalysis, setHeadlineAnalysis] = React.useState<any | null>(null)
   const [headlineText, setHeadlineText] = React.useState("")
@@ -148,7 +151,11 @@ export default function Overlay() {
       setIsLoading(false);
       return;
     }
-    if (newsAnalysis.length > 0 || isLoading) return;
+    
+    if (isLoading) return;
+    
+    // Limpiamos los subrayados viejos de la pantalla antes de lanzar el nuevo análisis
+    removeHighlights();
 
     const analyzePage = async () => {
       let attempts = 0;
@@ -197,9 +204,9 @@ export default function Overlay() {
 
       setIsLoading(true);
       const [articleResponse, headlineResponse] = await Promise.all([
-        sendToBackground({ name: "analyzeNews", body: { text: articleText } }),
+        sendToBackground({ name: "analyzeNews", body: { text: articleText, tweak: customPromptTweak } }),
         detectedHeadline
-          ? sendToBackground({ name: "analyzeNews", body: { text: detectedHeadline } })
+          ? sendToBackground({ name: "analyzeNews", body: { text: detectedHeadline, tweak: customPromptTweak } })
           : Promise.resolve({ data: null })
       ]);
 
@@ -259,7 +266,7 @@ export default function Overlay() {
 
     analyzePage()
     return () => { isCancelled = true; }
-  }, [isActive])
+  }, [isActive, reanalyzeTrigger])
 
   if (!isActive || (newsAnalysis.length === 0 && !isLoading)) return null
 
